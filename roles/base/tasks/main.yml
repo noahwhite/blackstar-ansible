@@ -1,0 +1,41 @@
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ ntp_timezone }}"
+
+- name: Ensure chrony is installed
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+
+- name: Enable and start chrony
+  ansible.builtin.systemd:
+    name: chronyd
+    enabled: true
+    state: started
+
+- name: Harden SSH - disable root password login
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin prohibit-password'
+  notify: Restart sshd
+
+- name: Harden SSH - disable password authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+  notify: Restart sshd
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name:
+      - htop
+      - curl
+      - wget
+      - vim
+      - tmux
+      - lm-sensors
+    state: present
+    update_cache: true
+    cache_valid_time: 3600

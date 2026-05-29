@@ -1,0 +1,15 @@
+- name: Base configuration for all hosts
+  hosts: all
+  roles:
+    - base
+
+- name: Proxmox common configuration
+  hosts: proxmox
+  roles:
+    - proxmox-common
+
+- name: Proxmox cluster setup
+  hosts: proxmox
+  serial: 1
+  roles:
+    - proxmox-cluster
