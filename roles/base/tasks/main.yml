@@ -18,14 +18,14 @@
     path: /etc/ssh/sshd_config
     regexp: '^#?PermitRootLogin'
     line: 'PermitRootLogin prohibit-password'
-  notify: Restart sshd
+  notify: Restart ssh
 
 - name: Harden SSH - disable password authentication
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
     regexp: '^#?PasswordAuthentication'
     line: 'PasswordAuthentication no'
-  notify: Restart sshd
+  notify: Restart ssh
 
 - name: Install common packages
   ansible.builtin.apt:
