@@ -1,0 +1,6 @@
+.claude/
+.codex/
+*.retry
+.vault_pass
+*.log
+.DS_Store
