@@ -1,0 +1,22 @@
+- name: Remove enterprise repository sources
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ pve_enterprise_sources }}"
+  notify: Update apt cache
+
+- name: Add PVE no-subscription repository
+  ansible.builtin.apt_repository:
+    repo: "{{ pve_no_subscription_repo }}"
+    filename: pve-no-subscription
+    state: present
+  notify: Update apt cache
+
+- name: Flush handlers to update apt cache
+  ansible.builtin.meta: flush_handlers
+
+- name: Install PVE utilities
+  ansible.builtin.apt:
+    name:
+      - libguestfs-tools
+    state: present
