@@ -20,6 +20,57 @@ End-to-end procedure for provisioning Proxmox VE nodes via PXE and configuring t
 | pve03 | pve03.home.arpa | 04:7B:CB:43:32:39 | Lenovo M75q Gen 2 | m75q-pve03.toml |
 | pve04 | pve04.home.arpa | 38:7C:76:4B:D2:FC | Lenovo M75q Gen 2 | m75q-pve04.toml |
 
+## Secure Boot PXE Setup (one-time, on blacksun)
+
+The PXE stack signs the Proxmox kernel with a custom key so that Ubuntu's shim/GRUB chain can verify it under Secure Boot. This section covers generating the signing key, signing the kernel, and setting up the GRUB config. These steps only need to be repeated when updating the Proxmox version.
+
+### Generate signing key
+
+```bash
+openssl req -new -x509 -newkey rsa:2048 -keyout /tmp/MOK.key -out /tmp/MOK.crt \
+    -nodes -days 3650 -subj "/CN=Blackstar PXE Boot/"
+openssl x509 -in /tmp/MOK.crt -outform DER -out /tmp/MOK.der
+```
+
+Store `MOK.key` and `MOK.crt` securely — they are needed to re-sign kernels on version updates. Copy `MOK.der` to `blackstar-pxe-stack/tftp/proxmox-secureboot/MOK.der` and to a FAT32 USB for BIOS enrollment.
+
+### Sign the Proxmox kernel
+
+```bash
+cd ~/dev/claude-workspaces/ghost-projects/blackstar-pxe-stack
+cp boot/proxmox/pve-9.2-1/linux26 boot/proxmox/pve-9.2-1/linux26.unsigned
+sudo sbsign --key /tmp/MOK.key --cert /tmp/MOK.crt \
+    --output boot/proxmox/pve-9.2-1/linux26 \
+    boot/proxmox/pve-9.2-1/linux26.unsigned
+```
+
+### Set up GRUB for network boot
+
+Copy Ubuntu's signed network GRUB as the second-stage bootloader:
+
+```bash
+cp /usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed \
+    tftp/proxmox-secureboot/grubx64.efi
+```
+
+Create the GRUB config at `tftp/grub/grub.cfg`:
+
+```cfg
+set timeout=5
+set default=0
+
+menuentry "Proxmox VE Auto Install" {
+    linux (http,192.168.1.169:8080)/proxmox/pve-9.2-1/linux26 proxmox-start-auto-installer
+    initrd (http,192.168.1.169:8080)/proxmox/pve-9.2-1/initrd-pxe.img
+}
+```
+
+### Restart PXE stack
+
+```bash
+docker compose restart pxe
+```
+
 ## Phase 0: BIOS Setup (per node, one-time)
 
 Secure Boot PXE requires the Blackstar PXE Boot signing key enrolled in each node's firmware. The PXE stack uses Ubuntu's signed shim and GRUB, which verify the Proxmox kernel signature against the firmware's Secure Boot db.
@@ -60,8 +111,9 @@ Firmware (verifies shim via Microsoft key)
 1. Set BIOS boot order to PXE first (or use F12 one-time boot menu)
 
 2. Power on — node PXE boots automatically:
-   - iPXE chainloads from blacksun
-   - Proxmox installer fetches answer file via MAC match
+   - Shim → GRUB chainloads from blacksun via TFTP
+   - GRUB loads signed Proxmox kernel and initrd over HTTP
+   - Proxmox auto-installer fetches answer file via MAC match
    - Automated install runs (~5-10 min)
    - Node powers off when complete
 
