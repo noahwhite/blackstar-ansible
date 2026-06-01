@@ -20,6 +20,39 @@ End-to-end procedure for provisioning Proxmox VE nodes via PXE and configuring t
 | pve03 | pve03.home.arpa | 04:7B:CB:43:32:39 | Lenovo M75q Gen 2 | m75q-pve03.toml |
 | pve04 | pve04.home.arpa | 38:7C:76:4B:D2:FC | Lenovo M75q Gen 2 | m75q-pve04.toml |
 
+## Phase 0: BIOS Setup (per node, one-time)
+
+Secure Boot PXE requires the Blackstar PXE Boot signing key enrolled in each node's firmware. The PXE stack uses Ubuntu's signed shim and GRUB, which verify the Proxmox kernel signature against the firmware's Secure Boot db.
+
+### Prerequisites
+
+- `MOK.der` on a FAT32-formatted USB drive (source: `blackstar-pxe-stack/tftp/proxmox-secureboot/MOK.der` or `/tmp/MOK.der` on blacksun)
+- BIOS firmware updated to latest version (older Lenovo M75q Gen 2 firmware does not persist MOK entries — update via Lenovo USB BIOS Update Utility if `mokutil --list-enrolled` returns empty after enrollment)
+
+### Steps
+
+1. Boot into BIOS setup (F1 at POST)
+
+2. Navigate to **Security → Secure Boot** — verify Secure Boot is **Enabled**
+
+3. Navigate to **Key Management → Authorized Signatures (db) → Add**
+
+4. Select the USB drive, choose `MOK.der`, and commit the change
+
+5. Verify the key appears in the Authorized Signatures list ("Blackstar PXE Boot")
+
+6. Save and exit BIOS
+
+### Secure Boot chain
+
+```
+Firmware (verifies shim via Microsoft key)
+  → shimx64.efi (Ubuntu, Microsoft-signed)
+    → grubx64.efi (Ubuntu signed network GRUB, Canonical-signed)
+      → linux26 (Proxmox kernel, signed with Blackstar PXE Boot key)
+        → verified by shim-lock against firmware Secure Boot db
+```
+
 ## Phase 1: PXE Install
 
 ### Per node:
