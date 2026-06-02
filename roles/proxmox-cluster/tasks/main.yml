@@ -11,7 +11,7 @@
   changed_when: true
 
 - name: Join cluster on other nodes
-  ansible.builtin.command: pvecm add {{ pve_cluster_master }} --use-ssh
+  ansible.builtin.command: pvecm add {{ pve_cluster_master }}
   when:
     - inventory_hostname != pve_cluster_master
     - not corosync_conf.stat.exists

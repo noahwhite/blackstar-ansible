@@ -11,5 +11,6 @@
 - name: Proxmox cluster setup
   hosts: proxmox
   serial: 1
+  tags: cluster
   roles:
     - proxmox-cluster
