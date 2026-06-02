@@ -16,7 +16,7 @@ End-to-end procedure for provisioning Proxmox VE nodes via PXE and configuring t
 | Node | FQDN | MAC | Hardware | Answer File |
 |------|------|-----|----------|-------------|
 | pve01 | pve01.home.arpa | E0:4F:43:E8:0A:F1 | Lenovo M75q Gen 2 | m75q-pve01.toml |
-| pve02 | pve02.home.arpa | TBD | Lenovo M75q Gen 2 | m75q-pve02.toml |
+| pve02 | pve02.home.arpa | 38:7C:76:D4:01:EC | Lenovo M75q Gen 2 | m75q-pve02.toml |
 | pve03 | pve03.home.arpa | 04:7B:CB:43:32:39 | Lenovo M75q Gen 2 | m75q-pve03.toml |
 | pve04 | pve04.home.arpa | 38:7C:76:4B:D2:FC | Lenovo M75q Gen 2 | m75q-pve04.toml |
 
