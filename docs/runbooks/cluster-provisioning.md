@@ -19,6 +19,7 @@ End-to-end procedure for provisioning Proxmox VE nodes via PXE and configuring t
 | pve02 | pve02.home.arpa | 38:7C:76:D4:01:EC | Lenovo M75q Gen 2 | m75q-pve02.toml |
 | pve03 | pve03.home.arpa | 04:7B:CB:43:32:39 | Lenovo M75q Gen 2 | m75q-pve03.toml |
 | pve04 | pve04.home.arpa | 38:7C:76:4B:D2:FC | Lenovo M75q Gen 2 | m75q-pve04.toml |
+| pve05 | pve05.home.arpa | 2C:58:B9:47:07:70 | HP EliteDesk 800 G9 Mini | ed800g9-pve05.toml |
 
 ## Secure Boot PXE Setup (one-time, on blacksun)
 
