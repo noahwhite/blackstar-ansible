@@ -24,6 +24,7 @@
 - name: Create admin PAM user
   ansible.builtin.user:
     name: "{{ pve_admin_user }}"
+    password: "{{ pve_admin_password_hash }}"
     shell: /bin/bash
     create_home: true
     groups: sudo
