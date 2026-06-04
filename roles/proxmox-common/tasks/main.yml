@@ -20,3 +20,23 @@
     name:
       - libguestfs-tools
     state: present
+
+- name: Create admin PAM user
+  ansible.builtin.user:
+    name: "{{ pve_admin_user }}"
+    shell: /bin/bash
+    create_home: true
+    groups: sudo
+    append: true
+
+- name: Register admin user in Proxmox
+  ansible.builtin.command:
+    cmd: pveum user add {{ pve_admin_user }}@pam
+  register: pveum_add
+  changed_when: pveum_add.rc == 0
+  failed_when: pveum_add.rc != 0 and 'already exists' not in pveum_add.stderr
+
+- name: Grant admin user Administrator role
+  ansible.builtin.command:
+    cmd: pveum acl modify / --users {{ pve_admin_user }}@pam --roles Administrator
+  changed_when: true

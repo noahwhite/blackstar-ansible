@@ -1,3 +1,4 @@
+pve_admin_user: noah
 pve_no_subscription_repo: "deb http://download.proxmox.com/debian/pve trixie pve-no-subscription"
 pve_enterprise_sources:
   - /etc/apt/sources.list.d/pve-enterprise.sources
