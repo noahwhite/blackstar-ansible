@@ -19,6 +19,7 @@
   ansible.builtin.apt:
     name:
       - libguestfs-tools
+      - lm-sensors
     state: present
 
 - name: Create admin PAM user
