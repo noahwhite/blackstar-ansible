@@ -8,6 +8,11 @@
   roles:
     - proxmox-common
 
+- name: Observability agents
+  hosts: proxmox
+  roles:
+    - alloy
+
 - name: Proxmox cluster setup
   hosts: proxmox
   serial: 1

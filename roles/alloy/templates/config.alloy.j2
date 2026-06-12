@@ -1,0 +1,18 @@
+prometheus.exporter.unix "local_system" { }
+
+prometheus.scrape "node_metrics" {
+  targets         = prometheus.exporter.unix.local_system.targets
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "{{ alloy_scrape_interval }}"
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = "{{ alloy_remote_write_url }}"
+
+    basic_auth {
+      username = "{{ alloy_remote_write_username }}"
+      password = "{{ alloy_remote_write_password }}"
+    }
+  }
+}
