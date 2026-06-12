@@ -30,6 +30,12 @@
     groups: sudo
     append: true
 
+- name: Set up SSH key for admin user
+  ansible.builtin.authorized_key:
+    user: "{{ pve_admin_user }}"
+    key: "{{ pve_admin_ssh_pubkey }}"
+    state: present
+
 - name: Register admin user in Proxmox
   ansible.builtin.command:
     cmd: pveum user add {{ pve_admin_user }}@pam
