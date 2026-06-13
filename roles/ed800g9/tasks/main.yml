@@ -3,6 +3,10 @@
     name: lm-sensors
     state: present
 
+- name: Detect hardware sensors
+  ansible.builtin.command: sensors-detect --auto
+  changed_when: false
+
 - name: Load drivetemp kernel module
   community.general.modprobe:
     name: drivetemp
