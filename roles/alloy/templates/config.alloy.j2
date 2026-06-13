@@ -1,8 +1,33 @@
 prometheus.exporter.unix "local_system" { }
 
+prometheus.relabel "friendly_names" {
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    source_labels = ["chip"]
+    regex         = "target.*"
+    target_label  = "chip_alias"
+    replacement   = "sata_sda"
+  }
+
+  rule {
+    source_labels = ["chip"]
+    regex         = "nvme_(nvme[0-9]+)"
+    target_label  = "chip_alias"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["chip"]
+    regex         = "platform_coretemp_0"
+    target_label  = "chip_alias"
+    replacement   = "cpu"
+  }
+}
+
 prometheus.scrape "node_metrics" {
   targets         = prometheus.exporter.unix.local_system.targets
-  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+  forward_to      = [prometheus.relabel.friendly_names.receiver]
   scrape_interval = "{{ alloy_scrape_interval }}"
 }
 
