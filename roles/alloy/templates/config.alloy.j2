@@ -23,6 +23,13 @@ prometheus.relabel "friendly_names" {
     target_label  = "chip_alias"
     replacement   = "cpu"
   }
+
+  rule {
+    source_labels = ["chip"]
+    regex         = "0000:07:00_0_0000:08:00_0"
+    target_label  = "chip_alias"
+    replacement   = "nic_10g"
+  }
 }
 
 prometheus.scrape "node_metrics" {
