@@ -1,0 +1,12 @@
+- name: Load drivetemp kernel module
+  community.general.modprobe:
+    name: drivetemp
+    state: present
+
+- name: Persist drivetemp kernel module across reboots
+  ansible.builtin.copy:
+    content: "drivetemp\n"
+    dest: /etc/modules-load.d/drivetemp.conf
+    owner: root
+    group: root
+    mode: "0644"

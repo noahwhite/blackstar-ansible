@@ -8,6 +8,11 @@
   roles:
     - proxmox-common
 
+- name: EliteDesk 800 G9 hardware configuration
+  hosts: ed800g9
+  roles:
+    - ed800g9
+
 - name: Observability agents
   hosts: proxmox
   roles:
