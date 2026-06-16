@@ -19,3 +19,16 @@
     owner: root
     group: root
     mode: "0644"
+
+- name: Load hp-wmi-sensors kernel module
+  community.general.modprobe:
+    name: hp-wmi-sensors
+    state: present
+
+- name: Persist hp-wmi-sensors kernel module across reboots
+  ansible.builtin.copy:
+    content: "hp-wmi-sensors\n"
+    dest: /etc/modules-load.d/hp-wmi-sensors.conf
+    owner: root
+    group: root
+    mode: "0644"
