@@ -28,6 +28,25 @@
     mode: "0640"
   notify: Restart alloy
 
+- name: Deploy SNMP exporter configuration
+  ansible.builtin.template:
+    src: snmp.yml.j2
+    dest: /etc/alloy/snmp.yml
+    owner: root
+    group: alloy
+    mode: "0640"
+  when: mikrotik_snmp_targets is defined and mikrotik_snmp_targets | length > 0
+  notify: Restart alloy
+
+- name: Deploy Alloy environment configuration
+  ansible.builtin.template:
+    src: alloy-env.j2
+    dest: /etc/default/alloy
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart alloy
+
 - name: Enable and start Alloy
   ansible.builtin.systemd:
     name: alloy

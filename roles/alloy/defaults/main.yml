@@ -1,3 +1,6 @@
 alloy_remote_write_url: "https://prometheus-prod-56-prod-us-east-2.grafana.net/api/prom/push"
 alloy_remote_write_username: "2702253"
 alloy_scrape_interval: "60s"
+
+mikrotik_snmp_community: "public"
+alloy_cluster_enabled: false

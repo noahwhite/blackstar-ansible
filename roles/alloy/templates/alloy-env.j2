@@ -1,0 +1,3 @@
+CONFIG_FILE="/etc/alloy/config.alloy"
+CUSTOM_ARGS="{% if alloy_cluster_enabled | default(false) %}--cluster.enabled --cluster.join-addresses={{ groups['ed800g9'] | map('regex_replace', '$', ':12345') | join(',') }}{% endif %}"
+RESTART_ON_UPGRADE=true
