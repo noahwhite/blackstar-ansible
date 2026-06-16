@@ -30,6 +30,13 @@ prometheus.relabel "friendly_names" {
     target_label  = "chip_alias"
     replacement   = "nic_10g"
   }
+
+  rule {
+    source_labels = ["chip"]
+    regex         = "wmi_bus_pnp0c14.*"
+    target_label  = "chip_alias"
+    replacement   = "hp_wmi"
+  }
 }
 
 prometheus.scrape "node_metrics" {
