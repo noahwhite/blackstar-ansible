@@ -1,5 +1,5 @@
 - name: Base configuration for all hosts
-  hosts: all
+  hosts: all:!network
   roles:
     - base
 
@@ -24,3 +24,15 @@
   tags: cluster
   roles:
     - proxmox-cluster
+
+- name: CRS305 10Gb switch configuration
+  hosts: network
+  tags: network
+  roles:
+    - routeros-crs305
+
+- name: Ceph network configuration
+  hosts: proxmox
+  tags: network
+  roles:
+    - ceph-network

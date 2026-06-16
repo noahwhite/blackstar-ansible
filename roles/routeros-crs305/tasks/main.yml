@@ -1,0 +1,26 @@
+- name: Create SFP+ bridge
+  community.routeros.command:
+    commands:
+      - /interface bridge add name={{ crs305_sfp_bridge }} comment="10Gb Ceph network"
+  register: bridge_add
+  failed_when: bridge_add.stdout is defined and 'failure' in bridge_add.stdout[0] and 'already' not in bridge_add.stdout[0]
+
+- name: Add SFP+ ports to bridge
+  community.routeros.command:
+    commands:
+      - /interface bridge port add bridge={{ crs305_sfp_bridge }} interface={{ item }}
+  loop: "{{ crs305_sfp_ports }}"
+  register: port_add
+  failed_when: port_add.stdout is defined and 'failure' in port_add.stdout[0] and 'already' not in port_add.stdout[0]
+
+- name: Assign IP to SFP+ bridge
+  community.routeros.command:
+    commands:
+      - /ip address add address={{ crs305_ceph_address }} interface={{ crs305_sfp_bridge }} network={{ crs305_ceph_network }} comment="Ceph gateway"
+  register: ip_add
+  failed_when: ip_add.stdout is defined and 'failure' in ip_add.stdout[0] and 'already' not in ip_add.stdout[0]
+
+- name: Enable IP forwarding
+  community.routeros.command:
+    commands:
+      - /ip settings set ip-forward=yes

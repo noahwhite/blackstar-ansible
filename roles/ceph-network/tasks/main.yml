@@ -1,0 +1,26 @@
+- name: Configure 10Gb Ceph interface
+  ansible.builtin.template:
+    src: ceph-10g.cfg.j2
+    dest: /etc/network/interfaces.d/ceph-10g.cfg
+    owner: root
+    group: root
+    mode: "0644"
+  when: ceph_network_interface is defined
+  notify: Restart networking
+
+- name: Install static route to Ceph network
+  ansible.builtin.template:
+    src: ceph-route.sh.j2
+    dest: /etc/network/if-up.d/ceph-route
+    owner: root
+    group: root
+    mode: "0755"
+  when: ceph_network_interface is not defined
+
+- name: Add Ceph route immediately
+  ansible.builtin.command:
+    cmd: ip route add {{ ceph_network_subnet }} via {{ ceph_route_via }}
+  register: ceph_route_add
+  changed_when: ceph_route_add.rc == 0
+  failed_when: ceph_route_add.rc != 0 and 'File exists' not in ceph_route_add.stderr
+  when: ceph_network_interface is not defined

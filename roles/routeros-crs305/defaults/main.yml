@@ -1,0 +1,9 @@
+crs305_sfp_bridge: bridge-sfp
+crs305_sfp_ports:
+  - sfp-sfpplus1
+  - sfp-sfpplus2
+  - sfp-sfpplus3
+  - sfp-sfpplus4
+crs305_ceph_address: 10.10.10.1/24
+crs305_ceph_network: 10.10.10.0
+crs305_mgmt_interface: ether1

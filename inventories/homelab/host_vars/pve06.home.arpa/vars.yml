@@ -1,0 +1,2 @@
+ceph_network_ip: 10.10.10.6
+ceph_network_interface: enp8s0
