@@ -1,3 +1,15 @@
+- name: Configure 10Gb Ceph network interface
+  ansible.builtin.blockinfile:
+    path: /etc/network/interfaces
+    marker: "# {mark} ANSIBLE MANAGED - 10Gb Ceph network"
+    block: |
+      auto enp8s0
+      iface enp8s0 inet static
+          address {{ ceph_ip }}/24
+          gateway 10.10.10.1
+          mtu 9000
+  notify: Restart networking
+
 - name: Install lm-sensors
   ansible.builtin.apt:
     name: lm-sensors
