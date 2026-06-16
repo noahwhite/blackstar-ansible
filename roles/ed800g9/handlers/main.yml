@@ -1,2 +1,2 @@
 - name: Restart networking
-  ansible.builtin.command: ifreload -a
+  ansible.builtin.command: ifup enp8s0
