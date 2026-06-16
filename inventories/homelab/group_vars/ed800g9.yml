@@ -3,3 +3,9 @@ alloy_cluster_enabled: true
 mikrotik_snmp_targets:
   - name: crs305
     address: 10.10.10.1
+
+tplink_snmp_community: blackstar
+
+tplink_snmp_targets:
+  - name: sg2210p
+    address: 192.168.1.174

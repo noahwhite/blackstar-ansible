@@ -80,3 +80,28 @@ prometheus.scrape "mikrotik_snmp" {
   }
 }
 {% endif %}
+{% if tplink_snmp_targets is defined and tplink_snmp_targets | length > 0 %}
+
+prometheus.exporter.snmp "tplink" {
+  config_file = "/etc/alloy/snmp.yml"
+{% for target in tplink_snmp_targets %}
+
+  target "{{ target.name }}" {
+    address = "{{ target.address }}"
+    module  = "tplink"
+    auth    = "blackstar_v2"
+  }
+{% endfor %}
+}
+
+prometheus.scrape "tplink_snmp" {
+  targets         = prometheus.exporter.snmp.tplink.targets
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "{{ alloy_scrape_interval }}"
+  job_name        = "integrations/snmp-tplink"
+
+  clustering {
+    enabled = {{ alloy_cluster_enabled | default(false) | lower }}
+  }
+}
+{% endif %}
