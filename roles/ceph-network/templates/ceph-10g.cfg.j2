@@ -1,0 +1,5 @@
+auto {{ ceph_network_interface }}
+iface {{ ceph_network_interface }} inet static
+    address {{ ceph_network_ip }}
+    netmask {{ ceph_network_netmask }}
+    mtu {{ ceph_network_mtu }}

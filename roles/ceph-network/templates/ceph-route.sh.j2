@@ -1,0 +1,7 @@
+#!/bin/sh
+# Add static route to Ceph 10Gb network via CRS305
+if [ "$IFACE" = "vmbr0" ]; then
+    if ! ip route show {{ ceph_network_subnet }} | grep -q via; then
+        ip route add {{ ceph_network_subnet }} via {{ ceph_route_via }}
+    fi
+fi

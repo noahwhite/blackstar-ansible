@@ -1,0 +1,5 @@
+ceph_network_subnet: 10.10.10.0/24
+ceph_network_netmask: 255.255.255.0
+ceph_network_gateway: 10.10.10.1
+ceph_network_mtu: 9000
+ceph_route_via: 192.168.1.190
