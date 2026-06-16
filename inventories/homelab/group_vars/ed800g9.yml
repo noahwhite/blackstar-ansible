@@ -2,4 +2,4 @@ alloy_cluster_enabled: true
 
 mikrotik_snmp_targets:
   - name: crs305
-    address: 192.168.1.190
+    address: 10.10.10.1
