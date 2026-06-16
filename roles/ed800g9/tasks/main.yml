@@ -6,7 +6,6 @@
       auto enp8s0
       iface enp8s0 inet static
           address {{ ceph_ip }}/24
-          gateway 10.10.10.1
           mtu 9000
   notify: Restart networking
 
