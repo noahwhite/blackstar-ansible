@@ -1,2 +1,4 @@
 pve_cluster_name: blackstar
-pve_cluster_master: pve01.home.arpa
+# Cluster bootstrap node: creates the cluster; all others join it.
+# A G9 (the Ceph backbone) so the initial cluster forms across pve05/06/07.
+pve_cluster_master: pve05.home.arpa

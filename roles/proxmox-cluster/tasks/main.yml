@@ -3,6 +3,52 @@
     path: /etc/pve/corosync.conf
   register: corosync_conf
 
+# first-boot.sh locks the root account (passwd -l) and disables SSH password
+# auth, so `pvecm add` cannot authenticate to the master with a root password.
+# Establish key-based root SSH trust (joining node -> master) so the join can
+# run over SSH non-interactively. Only needed while the node is not yet a
+# cluster member; once joined, Proxmox syncs root keys across the cluster.
+
+- name: Ensure root has an SSH key for cluster join auth
+  ansible.builtin.command:
+    cmd: ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ""
+    creates: /root/.ssh/id_ed25519
+
+- name: Read this node's root public key
+  ansible.builtin.slurp:
+    src: /root/.ssh/id_ed25519.pub
+  register: node_root_pubkey
+
+- name: Authorize this node's root key on the cluster master
+  ansible.builtin.authorized_key:
+    user: root
+    state: present
+    key: "{{ node_root_pubkey['content'] | b64decode | trim }}"
+  delegate_to: "{{ pve_cluster_master }}"
+  when:
+    - inventory_hostname != pve_cluster_master
+    - not corosync_conf.stat.exists
+
+- name: Scan the master's SSH host key
+  ansible.builtin.command:
+    cmd: ssh-keyscan -t ed25519 {{ pve_cluster_master }}
+  register: master_host_key
+  changed_when: false
+  when:
+    - inventory_hostname != pve_cluster_master
+    - not corosync_conf.stat.exists
+
+- name: Trust the master's host key in root's known_hosts
+  ansible.builtin.known_hosts:
+    path: /root/.ssh/known_hosts
+    name: "{{ pve_cluster_master }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ master_host_key.stdout_lines | default([]) | reject('match', '^#') | reject('match', '^$') | list }}"
+  when:
+    - inventory_hostname != pve_cluster_master
+    - not corosync_conf.stat.exists
+
 - name: Create cluster on master
   ansible.builtin.command: pvecm create {{ pve_cluster_name }}
   when:
@@ -10,8 +56,8 @@
     - not corosync_conf.stat.exists
   changed_when: true
 
-- name: Join cluster on other nodes
-  ansible.builtin.command: pvecm add {{ pve_cluster_master }}
+- name: Join cluster on other nodes over SSH (key-based)
+  ansible.builtin.command: pvecm add {{ pve_cluster_master }} --use_ssh
   when:
     - inventory_hostname != pve_cluster_master
     - not corosync_conf.stat.exists
