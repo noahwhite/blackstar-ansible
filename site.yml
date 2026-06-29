@@ -36,3 +36,10 @@
   tags: network
   roles:
     - ceph-network
+
+- name: Ceph storage cluster
+  hosts: ed800g9
+  serial: 1
+  tags: ceph
+  roles:
+    - pveceph
