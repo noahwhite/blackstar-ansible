@@ -32,9 +32,11 @@
 # =============================================================================
 # Install Ceph packages (all mon/osd nodes)
 # =============================================================================
-- name: Check whether Ceph is already installed
+# Guard on the ceph-mon daemon binary, not /usr/bin/ceph — the ceph CLI ships
+# with base PVE before `pveceph install`, so the daemons can still be missing.
+- name: Check whether the Ceph daemons are already installed
   ansible.builtin.stat:
-    path: /usr/bin/ceph
+    path: /usr/bin/ceph-mon
   register: ceph_bin
 
 - name: Install Ceph ({{ ceph_release }}, no-subscription repo)
