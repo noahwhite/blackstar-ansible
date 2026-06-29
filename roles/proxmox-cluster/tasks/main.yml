@@ -44,7 +44,7 @@
     name: "{{ pve_cluster_master }}"
     key: "{{ item }}"
     state: present
-  loop: "{{ master_host_key.stdout_lines | default([]) }}"
+  loop: "{{ master_host_key.stdout_lines | default([]) | reject('match', '^#') | reject('match', '^$') | list }}"
   when:
     - inventory_hostname != pve_cluster_master
     - not corosync_conf.stat.exists
