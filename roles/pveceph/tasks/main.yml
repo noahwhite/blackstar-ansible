@@ -39,8 +39,11 @@
     path: /usr/bin/ceph-mon
   register: ceph_bin
 
+# pveceph install shells out to apt-get interactively ("Do you want to
+# continue? [Y/n]"); feed it "yes" so it runs non-interactively. The pipe's
+# exit status is pveceph's, so a real install failure still surfaces.
 - name: Install Ceph ({{ ceph_release }}, no-subscription repo)
-  ansible.builtin.command: "pveceph install --repository no-subscription --version {{ ceph_release }}"
+  ansible.builtin.shell: "yes | pveceph install --repository no-subscription --version {{ ceph_release }}"
   when: not ceph_bin.stat.exists
 
 # =============================================================================
