@@ -88,10 +88,12 @@
 
 # ceph-volume zap won't remove a partition table ("Device has partitions"),
 # and these NVMes carry stale ntfs/zfs_member partitions from prior installs.
-# Destroy the GPT/MBR (sgdisk) and any device-level signatures (wipefs), then
-# let udev settle, leaving a clean whole disk for `pveceph osd create`.
+# Destroy the GPT/MBR (sgdisk) and device-level signatures (wipefs), then force
+# the kernel to drop the stale partition nodes (blockdev --rereadpt) and wait
+# for udev — otherwise `pveceph osd create` can race the cleanup and report the
+# disk "already in use" while the old partition nodes still linger.
 - name: Wipe stale partition tables/signatures from unused OSD disks
-  ansible.builtin.shell: "sgdisk --zap-all {{ item.item }} && wipefs --all {{ item.item }} && udevadm settle"
+  ansible.builtin.shell: "sgdisk --zap-all {{ item.item }} && wipefs --all {{ item.item }} && blockdev --rereadpt {{ item.item }} && udevadm settle"
   loop: "{{ ceph_osd_existing.results }}"
   loop_control:
     label: "{{ item.item }}"
