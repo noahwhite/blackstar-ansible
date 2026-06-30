@@ -69,12 +69,12 @@
 - name: Create Ceph monitor
   ansible.builtin.command: pveceph mon create
   args:
-    creates: "/var/lib/ceph/mon/ceph-{{ ansible_hostname }}"
+    creates: "/var/lib/ceph/mon/ceph-{{ ansible_facts['hostname'] }}"
 
 - name: Create Ceph manager
   ansible.builtin.command: pveceph mgr create
   args:
-    creates: "/var/lib/ceph/mgr/ceph-{{ ansible_hostname }}"
+    creates: "/var/lib/ceph/mgr/ceph-{{ ansible_facts['hostname'] }}"
 
 # =============================================================================
 # OSDs — zap stale signatures then create (idempotent: skip disks already OSDs)
