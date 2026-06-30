@@ -1,0 +1,23 @@
+# Ceph release shipped with PVE 9.2 (Trixie)
+ceph_release: squid
+
+# Single 10Gb fabric (CRS305) carries both Ceph public and cluster traffic
+# for the 3-node mesh. enp8s0 / 10.10.10.0/24, MTU 9000.
+ceph_public_network: 10.10.10.0/24
+ceph_cluster_network: 10.10.10.0/24
+
+# Node that runs `pveceph init` and the one-time pool creation.
+# Matches the PVE cluster bootstrap node (pve_cluster_master).
+ceph_bootstrap_node: pve05.home.arpa
+
+# Whole NVMe disks consumed as OSDs (2 per G9 -> 6 OSDs total).
+# The SATA boot SSD (/dev/sda, rpool) is NEVER listed here, and a guard in
+# tasks/main.yml refuses any disk that backs an active ZFS pool.
+ceph_osd_disks:
+  - /dev/nvme0n1
+  - /dev/nvme1n1
+
+# Starter RBD pool for VM/CT storage (3 replicas across the 3 hosts).
+ceph_pool_name: vm-storage
+ceph_pool_size: 3
+ceph_pool_min_size: 2

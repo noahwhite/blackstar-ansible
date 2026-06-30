@@ -1,0 +1,128 @@
+# =============================================================================
+# Safety guards — never touch the boot disk or a disk backing a live ZFS pool
+# =============================================================================
+- name: Refuse to use the SATA boot disk as an OSD
+  ansible.builtin.assert:
+    that:
+      - ceph_osd_disks | select('match', '^/dev/sda') | list | length == 0
+    fail_msg: "ceph_osd_disks must never include the boot SSD (/dev/sda*)"
+    quiet: true
+
+- name: Resolve OSD disks to their real device paths
+  ansible.builtin.command: "readlink -f {{ item }}"
+  register: ceph_osd_real
+  changed_when: false
+  loop: "{{ ceph_osd_disks }}"
+
+- name: Get devices backing imported ZFS pools
+  ansible.builtin.command: zpool status -LP
+  register: ceph_zpool_status
+  changed_when: false
+
+- name: Refuse to wipe any disk that backs an active ZFS pool
+  ansible.builtin.assert:
+    that:
+      - item.stdout not in ceph_zpool_status.stdout
+    fail_msg: "{{ item.item }} ({{ item.stdout }}) is in use by an active ZFS pool — refusing to wipe"
+    quiet: true
+  loop: "{{ ceph_osd_real.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# =============================================================================
+# Install Ceph packages (all mon/osd nodes)
+# =============================================================================
+# Guard on the ceph-mon daemon binary, not /usr/bin/ceph — the ceph CLI ships
+# with base PVE before `pveceph install`, so the daemons can still be missing.
+- name: Check whether the Ceph daemons are already installed
+  ansible.builtin.stat:
+    path: /usr/bin/ceph-mon
+  register: ceph_bin
+
+# pveceph install shells out to apt-get interactively ("Do you want to
+# continue? [Y/n]"); feed it "yes" so it runs non-interactively. The pipe's
+# exit status is pveceph's, so a real install failure still surfaces.
+- name: Install Ceph ({{ ceph_release }}, no-subscription repo)
+  ansible.builtin.shell: "yes | pveceph install --repository no-subscription --version {{ ceph_release }}"
+  when: not ceph_bin.stat.exists
+
+# =============================================================================
+# Initialise the Ceph cluster (bootstrap node only)
+# =============================================================================
+- name: Initialise Ceph on the bootstrap node
+  ansible.builtin.command: >-
+    pveceph init
+    --network {{ ceph_public_network }}
+    --cluster-network {{ ceph_cluster_network }}
+  args:
+    creates: /etc/pve/ceph.conf
+  when: inventory_hostname == ceph_bootstrap_node
+
+- name: Wait for ceph.conf to propagate to this node
+  ansible.builtin.wait_for:
+    path: /etc/pve/ceph.conf
+    timeout: 60
+
+# =============================================================================
+# Monitor + manager on every node
+# =============================================================================
+- name: Create Ceph monitor
+  ansible.builtin.command: pveceph mon create
+  args:
+    creates: "/var/lib/ceph/mon/ceph-{{ ansible_hostname }}"
+
+- name: Create Ceph manager
+  ansible.builtin.command: pveceph mgr create
+  args:
+    creates: "/var/lib/ceph/mgr/ceph-{{ ansible_hostname }}"
+
+# =============================================================================
+# OSDs — zap stale signatures then create (idempotent: skip disks already OSDs)
+# =============================================================================
+- name: Detect disks that already host an OSD
+  ansible.builtin.command: "ceph-volume lvm list {{ item }}"
+  register: ceph_osd_existing
+  changed_when: false
+  failed_when: false
+  loop: "{{ ceph_osd_disks }}"
+
+# ceph-volume zap won't remove a partition table ("Device has partitions"),
+# and these NVMes carry stale ntfs/zfs_member partitions from prior installs.
+# Destroy the GPT/MBR (sgdisk) and device-level signatures (wipefs), then force
+# the kernel to drop the stale partition nodes (blockdev --rereadpt) and wait
+# for udev — otherwise `pveceph osd create` can race the cleanup and report the
+# disk "already in use" while the old partition nodes still linger.
+- name: Wipe stale partition tables/signatures from unused OSD disks
+  ansible.builtin.shell: "sgdisk --zap-all {{ item.item }} && wipefs --all {{ item.item }} && blockdev --rereadpt {{ item.item }} && udevadm settle"
+  loop: "{{ ceph_osd_existing.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: "'osd.' not in item.stdout"
+
+- name: Create an OSD on each unused disk
+  ansible.builtin.command: "pveceph osd create {{ item.item }}"
+  loop: "{{ ceph_osd_existing.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: "'osd.' not in item.stdout"
+
+# =============================================================================
+# Starter RBD pool (bootstrap node, once). PGs stay degraded until all three
+# nodes' OSDs are up — expected, self-heals as the serial run progresses.
+# =============================================================================
+- name: List existing Ceph pools
+  ansible.builtin.command: ceph osd pool ls
+  register: ceph_pools
+  changed_when: false
+  when: inventory_hostname == ceph_bootstrap_node
+
+- name: Create the RBD pool
+  ansible.builtin.command: >-
+    pveceph pool create {{ ceph_pool_name }}
+    --size {{ ceph_pool_size }}
+    --min_size {{ ceph_pool_min_size }}
+    --pg_autoscale_mode on
+    --application rbd
+  when:
+    - inventory_hostname == ceph_bootstrap_node
+    - ceph_pool_name not in ceph_pools.stdout_lines
