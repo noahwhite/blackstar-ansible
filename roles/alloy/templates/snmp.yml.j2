@@ -144,7 +144,7 @@ modules:
 
   tplink:
     walk:
-      - 1.3.6.1.2.1.1.3
+      - 1.3.6.1.2.1.1
       - 1.3.6.1.2.1.2.2
       - 1.3.6.1.2.1.31.1.1
     metrics:
@@ -152,6 +152,26 @@ modules:
         oid: 1.3.6.1.2.1.1.3
         type: gauge
         help: System uptime in hundredths of a second.
+
+      - name: sysDescr
+        oid: 1.3.6.1.2.1.1.1
+        type: DisplayString
+        help: System description.
+
+      - name: sysName
+        oid: 1.3.6.1.2.1.1.5
+        type: DisplayString
+        help: System name.
+
+      - name: sysLocation
+        oid: 1.3.6.1.2.1.1.6
+        type: DisplayString
+        help: System location.
+
+      - name: sysContact
+        oid: 1.3.6.1.2.1.1.4
+        type: DisplayString
+        help: System contact information.
 
       - name: ifOperStatus
         oid: 1.3.6.1.2.1.2.2.1.8
