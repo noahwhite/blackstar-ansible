@@ -1,7 +1,29 @@
-prometheus.exporter.unix "local_system" { }
+prometheus.exporter.unix "local_system" {
+  // Disable collectors whose series no dashboard panel or alert queries, to stay
+  // under the Grafana Cloud free-tier 10k active-series cap (NWSOC-21):
+  //   softnet      ~864 series  (per-CPU softirq stats)
+  //   schedstat    ~324 series  (per-CPU scheduler stats)
+  //   thermal_zone ~278 series  (node_cooling_device_*; temps come from hwmon)
+  disable_collectors = ["softnet", "schedstat", "thermal_zone"]
+}
 
 prometheus.relabel "friendly_names" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  // Drop high-cardinality node_exporter series unused by any panel/alert, to stay
+  // under the Grafana Cloud free-tier 10k active-series cap (NWSOC-21).
+  // node_scrape_collector_* : per-collector scrape meta (~600 series).
+  rule {
+    source_labels = ["__name__"]
+    regex         = "node_scrape_collector_(duration_seconds|success)"
+    action        = "drop"
+  }
+  // Unused cpufreq series (~648). Keep node_cpu_scaling_frequency_hertz (dashboarded).
+  rule {
+    source_labels = ["__name__"]
+    regex         = "node_cpu_scaling_governor|node_cpu_frequency_(min|max)_hertz|node_cpu_scaling_frequency_(min|max)_hertz"
+    action        = "drop"
+  }
 
   rule {
     source_labels = ["chip"]
