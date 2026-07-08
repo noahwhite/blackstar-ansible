@@ -140,7 +140,25 @@ modules:
       - name: mtxrHlProcessorTemperature
         oid: 1.3.6.1.4.1.14988.1.1.3.11
         type: gauge
-        help: Processor temperature in 0.1 Celsius.
+        help: Processor temperature in 0.1 Celsius (legacy scalar; RouterOS only, SwOS returns noSuchInstance).
+
+      # Newer mtxrHlSensorTable — reports temperature as a direct integer in Celsius.
+      # SwOS (CSS610) exposes ONLY this table (value column, no name); RouterOS
+      # (CRS305/CRS310) populates it too with a "cpu-temperature" name. One metric
+      # therefore covers every MikroTik switch. Subtree already walked via ...1.1.3.
+      - name: mtxrHlSensorValue
+        oid: 1.3.6.1.4.1.14988.1.1.3.100.1.3
+        type: gauge
+        help: MikroTik health sensor value (temperature in Celsius, direct integer).
+        indexes:
+          - labelname: mtxrHlSensorIndex
+            type: gauge
+        lookups:
+          - labels:
+              - mtxrHlSensorIndex
+            labelname: mtxrHlSensorName
+            oid: 1.3.6.1.4.1.14988.1.1.3.100.1.2
+            type: DisplayString
 
   tplink:
     walk:
