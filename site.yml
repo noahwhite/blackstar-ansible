@@ -15,6 +15,7 @@
 
 - name: Observability agents
   hosts: proxmox
+  tags: observability
   roles:
     - alloy
 
