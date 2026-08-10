@@ -34,7 +34,7 @@ packages:
 
 runcmd:
   - systemctl enable --now qemu-guest-agent
-  # Join the officina tailnet. The key is minted pre-tagged (tag:ci-runner),
+  # Join the officina tailnet. The key is minted pre-tagged (tag:officina-ci),
   # so do NOT also pass --advertise-tags.
   - curl -fsSL https://tailscale.com/install.sh | sh
   - tailscale up --authkey="{{ officina_ci_tailscale_authkey }}" --ssh --hostname="{{ item.name }}"

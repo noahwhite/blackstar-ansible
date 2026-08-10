@@ -7,7 +7,7 @@
       - officina_ci_tailscale_authkey | length > 0
     fail_msg: >-
       officina_ci_tailscale_authkey is empty. Mint a dedicated ephemeral
-      tag:ci-runner tailscale auth key in officina BWS and pass it with
+      tag:officina-ci tailscale auth key in officina BWS and pass it with
       --extra-vars officina_ci_tailscale_authkey=<key>. Never commit it.
     quiet: true
 

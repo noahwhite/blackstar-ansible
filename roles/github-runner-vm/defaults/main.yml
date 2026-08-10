@@ -39,7 +39,7 @@ runner_vm_ciuser: noah
 runner_vm_sshkeys: []
 
 # --- The single officina -> blackstar secret ---------------------------------
-# Ephemeral, pre-tagged (tag:ci-runner) tailscale auth key from officina BWS.
+# Ephemeral, pre-tagged (tag:officina-ci) tailscale auth key from officina BWS.
 # REQUIRED via --extra-vars; asserted non-empty; templated into the (uncommitted,
 # node-local) snippet at run time. NEVER commit a value here.
 officina_ci_tailscale_authkey: ""
