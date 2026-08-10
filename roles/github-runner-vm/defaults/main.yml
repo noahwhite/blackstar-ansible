@@ -1,0 +1,57 @@
+# =============================================================================
+# github-runner-vm — births Proxmox VMs that host officina-site's self-hosted
+# GitHub Actions CI runners. These VMs are GUESTS, not managed Ansible hosts:
+# this role only creates and base-configures them via cloud-init. The officina
+# operator enrolls the runner + host telemetry afterward over `tailscale ssh`
+# (officina-cicd provision-runner.sh) — do NOT add them to the inventory or
+# apply the `alloy` role (that ships to grafana-personal, not officina).
+# =============================================================================
+
+# --- Cloud-init template (built once, then cloned) ---------------------------
+runner_vm_template_id: 9000
+runner_vm_template_name: ubuntu-2404-cloudinit
+runner_vm_image_url: "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img"
+# Scratch download path on the play host for the cloud image. It is imported
+# into the template's disk and then no longer needed.
+runner_vm_image_path: "/root/{{ runner_vm_image_url | basename }}"
+
+# --- Storage / network -------------------------------------------------------
+runner_vm_storage: vm-storage          # Ceph RBD for the VM + cloud-init disks
+runner_vm_bridge: vmbr0                 # flat LAN for now — VLAN deferred
+# VLAN isolation is deferred until the TOR switch swap. Set a numeric 802.1q tag
+# here later to drop the runners onto an isolated VLAN — it is applied to the
+# template's net0 and inherited by every clone. Empty = untagged (flat LAN).
+runner_vm_vlan_tag: ""
+
+# Cloud-init user-data snippet storage. Snippets require a storage with
+# content=snippets; the role enables that automatically. `local` is node-local
+# DIR storage (Ceph RBD cannot hold snippets), so the file is written on each
+# target node. `runner_vm_snippets_path` is that storage's on-disk directory.
+runner_vm_snippets_storage: local
+runner_vm_snippets_path: /var/lib/vz/snippets
+
+# --- Guest login (console/LAN fallback; primary mgmt is tailscale ssh) --------
+runner_vm_ciuser: noah
+# Admin SSH public keys granted console/LAN fallback access to the guest (baked
+# into the cloud-init user-data). Empty = no fallback user keys; the box is
+# still reachable via `tailscale ssh root@<hostname>`. Pubkeys are not secret
+# but are environment-specific — set in host_vars or via --extra-vars.
+runner_vm_sshkeys: []
+
+# --- The single officina -> blackstar secret ---------------------------------
+# Reusable, ephemeral, pre-tagged (tag:officina-ci) tailscale auth key from
+# officina BWS — the same key profile the Hetzner runners use (max 90-day
+# expiry, rotated on that cadence; NOT minted-and-revoked per run). Reusable so
+# one play run enrols both VMs, and a still-valid BWS key re-enrols a rebuilt or
+# long-powered-off runner. Ephemeral nodes persist across normal reboots
+# (tailscaled keeps its node key); removal only fires after a sustained offline
+# window. REQUIRED via --extra-vars; asserted non-empty; templated into the
+# (uncommitted, node-local) snippet at run time. NEVER commit a value here.
+officina_ci_tailscale_authkey: ""
+
+# --- The runner VMs ----------------------------------------------------------
+# One GitHub runner per VM (officina sets RUNNER_COUNT=1) — deliberately avoids
+# the concurrent-Testcontainers OOM that hung the old shared Hetzner box.
+runner_vms:
+  - {vmid: 8001, name: officina-runner-1, node: pve05.home.arpa, cores: 4, memory: 8192, disk: 80}
+  - {vmid: 8002, name: officina-runner-2, node: pve06.home.arpa, cores: 4, memory: 8192, disk: 80}

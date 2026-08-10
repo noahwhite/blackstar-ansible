@@ -44,3 +44,15 @@
   tags: ceph
   roles:
     - pveceph
+
+# GitHub Actions runner VMs for officina-site CI. Opt-in only: the `never` tag
+# keeps this play out of default runs, so it fires solely with `--tags runners`
+# and the officina tailscale auth key passed via --extra-vars. Runs on the
+# cluster/template-owner node (pve05); clones are placed per runner_vms.node.
+- name: GitHub Actions runner VMs (officina CI)
+  hosts: pve05.home.arpa
+  tags:
+    - never
+    - runners
+  roles:
+    - github-runner-vm
