@@ -6,9 +6,10 @@
     that:
       - officina_ci_tailscale_authkey | length > 0
     fail_msg: >-
-      officina_ci_tailscale_authkey is empty. Mint a dedicated ephemeral
-      tag:officina-ci tailscale auth key in officina BWS and pass it with
-      --extra-vars officina_ci_tailscale_authkey=<key>. Never commit it.
+      officina_ci_tailscale_authkey is empty. Supply the reusable, ephemeral
+      tag:officina-ci auth key from officina BWS (the same key the Hetzner
+      runners use, rotated on Tailscale's 90-day cycle) via --extra-vars.
+      Never commit it.
     quiet: true
 
 # =============================================================================

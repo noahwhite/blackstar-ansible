@@ -39,9 +39,14 @@ runner_vm_ciuser: noah
 runner_vm_sshkeys: []
 
 # --- The single officina -> blackstar secret ---------------------------------
-# Ephemeral, pre-tagged (tag:officina-ci) tailscale auth key from officina BWS.
-# REQUIRED via --extra-vars; asserted non-empty; templated into the (uncommitted,
-# node-local) snippet at run time. NEVER commit a value here.
+# Reusable, ephemeral, pre-tagged (tag:officina-ci) tailscale auth key from
+# officina BWS — the same key profile the Hetzner runners use (max 90-day
+# expiry, rotated on that cadence; NOT minted-and-revoked per run). Reusable so
+# one play run enrols both VMs, and a still-valid BWS key re-enrols a rebuilt or
+# long-powered-off runner. Ephemeral nodes persist across normal reboots
+# (tailscaled keeps its node key); removal only fires after a sustained offline
+# window. REQUIRED via --extra-vars; asserted non-empty; templated into the
+# (uncommitted, node-local) snippet at run time. NEVER commit a value here.
 officina_ci_tailscale_authkey: ""
 
 # --- The runner VMs ----------------------------------------------------------
