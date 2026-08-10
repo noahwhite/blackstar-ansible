@@ -126,3 +126,27 @@
   when:
     - inventory_hostname == ceph_bootstrap_node
     - ceph_pool_name not in ceph_pools.stdout_lines
+
+# =============================================================================
+# Register the pool as a Proxmox RBD storage (bootstrap node, once). storage.cfg
+# is cluster-wide, so one add exposes `{{ ceph_pool_name }}` on every node.
+# `pveceph pool create` was run without --add_storages, so the pool exists in
+# Ceph but has no PVE storage entry until this runs — without it `qm`/`pct`
+# cannot place disks on Ceph ("storage '{{ ceph_pool_name }}' does not exist").
+# Uses the cluster's own ceph automatically (no monhost/keyring for a
+# pve-managed pool).
+# =============================================================================
+- name: List existing Proxmox storages
+  ansible.builtin.command: pvesm status
+  register: pve_storage_status
+  changed_when: false
+  when: inventory_hostname == ceph_bootstrap_node
+
+- name: Register the RBD pool as a Proxmox storage
+  ansible.builtin.command: >-
+    pvesm add rbd {{ ceph_pool_name }}
+    --pool {{ ceph_pool_name }}
+    --content images,rootdir
+  when:
+    - inventory_hostname == ceph_bootstrap_node
+    - ceph_pool_name not in pve_storage_status.stdout
