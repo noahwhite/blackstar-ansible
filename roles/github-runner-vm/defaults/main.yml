@@ -15,6 +15,14 @@ runner_vm_image_url: "https://cloud-images.ubuntu.com/releases/noble/release/ubu
 # into the template's disk and then no longer needed.
 runner_vm_image_path: "/root/{{ runner_vm_image_url | basename }}"
 
+# Guest CPU model. QEMU's default (kvm64) is an x86-64-v1 baseline that lacks
+# SSE4.2/POPCNT, so el9 glibc (2.34+) container images — e.g. mysql:8.0 under
+# Testcontainers — die with "CPU does not support x86-64-v2". `host` passes the
+# physical CPU through (best perf) and is safe here: the runners are pinned to
+# the identical ed800g9 nodes and never migrated. Use `x86-64-v2-AES` or
+# `x86-64-v3` instead if these ever need cross-node live migration.
+runner_vm_cpu_type: host
+
 # --- Storage / network -------------------------------------------------------
 runner_vm_storage: vm-storage          # Ceph RBD for the VM + cloud-init disks
 runner_vm_bridge: vmbr0                 # flat LAN for now — VLAN deferred
