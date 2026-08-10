@@ -1,0 +1,61 @@
+#cloud-config
+# Rendered by the blackstar-ansible github-runner-vm role for {{ item.name }}.
+# NODE-LOCAL and UNCOMMITTED: contains the officina tailscale auth key at run
+# time. Ported from the officina Hetzner runner module (docker + tailscale +
+# runner dirs + weekly cleanup). Runner registration itself is done afterward,
+# officina-side, over tailscale ssh — this file only base-configures the guest.
+hostname: {{ item.name }}
+preserve_hostname: false
+ssh_pwauth: false
+
+users:
+  - default
+{% if runner_vm_ciuser | length > 0 %}
+  - name: {{ runner_vm_ciuser }}
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+{% if runner_vm_sshkeys | length > 0 %}
+    ssh_authorized_keys:
+{% for key in runner_vm_sshkeys %}
+      - {{ key }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+package_update: true
+packages:
+  - qemu-guest-agent
+  - docker.io
+  - docker-compose-v2
+  - jq
+  - curl
+
+runcmd:
+  - systemctl enable --now qemu-guest-agent
+  # Join the officina tailnet. The key is minted pre-tagged (tag:ci-runner),
+  # so do NOT also pass --advertise-tags.
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - tailscale up --authkey="{{ officina_ci_tailscale_authkey }}" --ssh --hostname="{{ item.name }}"
+  # Bind the stock sshd to the assigned tailnet address only; primary management
+  # is tailscale ssh (which runs independently of sshd), matching the Hetzner
+  # runners. If tailscale has no address yet, leave sshd on its defaults.
+  - |
+    ts_ip="$(tailscale ip -4 | head -n1)"
+    if [ -n "$ts_ip" ]; then
+      printf 'ListenAddress %s\n' "$ts_ip" > /etc/ssh/sshd_config.d/99-tailscale-only.conf
+      systemctl restart ssh
+    fi
+  - systemctl enable --now docker
+{% if runner_vm_ciuser | length > 0 %}
+  - usermod -aG docker {{ runner_vm_ciuser }}
+{% endif %}
+  - mkdir -p /opt/github-runner /etc/alloy
+  - |
+    cat > /etc/cron.weekly/docker-cleanup <<'EOF'
+    #!/bin/bash
+    journalctl --vacuum-time=7d
+    docker image prune -a -f
+    EOF
+  - chmod +x /etc/cron.weekly/docker-cleanup

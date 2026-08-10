@@ -1,0 +1,158 @@
+# =============================================================================
+# Preconditions
+# =============================================================================
+- name: Assert the officina tailscale auth key was supplied
+  ansible.builtin.assert:
+    that:
+      - officina_ci_tailscale_authkey | length > 0
+    fail_msg: >-
+      officina_ci_tailscale_authkey is empty. Mint a dedicated ephemeral
+      tag:ci-runner tailscale auth key in officina BWS and pass it with
+      --extra-vars officina_ci_tailscale_authkey=<key>. Never commit it.
+    quiet: true
+
+# =============================================================================
+# Phase A — build the Ubuntu 24.04 cloud-init template once.
+# Guard on `qm status <id>` (rc != 0 => the template VM does not exist yet).
+# The whole block runs only on a clean slate; if a prior run failed partway,
+# `qm destroy {{ runner_vm_template_id }}` and re-run.
+# =============================================================================
+- name: Check whether the runner template already exists
+  ansible.builtin.command: "qm status {{ runner_vm_template_id }}"
+  register: runner_template_status
+  changed_when: false
+  failed_when: false
+
+- name: Build the cloud-init template
+  when: runner_template_status.rc != 0
+  block:
+    - name: Download the Ubuntu 24.04 cloud image
+      ansible.builtin.get_url:
+        url: "{{ runner_vm_image_url }}"
+        dest: "{{ runner_vm_image_path }}"
+        mode: "0644"
+
+    - name: Create the template VM shell
+      ansible.builtin.command: >-
+        qm create {{ runner_vm_template_id }}
+        --name {{ runner_vm_template_name }}
+        --memory 2048 --cores 2
+        --net0 virtio,bridge={{ runner_vm_bridge }}{% if runner_vm_vlan_tag | string | length > 0 %},tag={{ runner_vm_vlan_tag }}{% endif %}
+        --scsihw virtio-scsi-single --ostype l26
+        --agent enabled=1 --serial0 socket --vga serial0
+      changed_when: true
+
+    - name: Import the cloud image as the template's boot disk
+      ansible.builtin.command: >-
+        qm set {{ runner_vm_template_id }}
+        --scsi0 {{ runner_vm_storage }}:0,import-from={{ runner_vm_image_path }}
+      changed_when: true
+
+    - name: Attach a cloud-init drive
+      ansible.builtin.command: >-
+        qm set {{ runner_vm_template_id }} --ide2 {{ runner_vm_storage }}:cloudinit
+      changed_when: true
+
+    - name: Set the boot disk
+      ansible.builtin.command: "qm set {{ runner_vm_template_id }} --boot order=scsi0"
+      changed_when: true
+
+    - name: Convert the VM into a template
+      ansible.builtin.command: "qm template {{ runner_vm_template_id }}"
+      changed_when: true
+
+# =============================================================================
+# Phase B — clone + configure each runner VM.
+# Cloud-init snippets live on node-local DIR storage; the clone/config `qm`
+# calls run on the node that owns each VM (the template owner clones with
+# --target, then per-VM `qm set/resize/start` are delegated to that node).
+# =============================================================================
+- name: Read the content types configured on the snippet storage
+  ansible.builtin.shell:
+    cmd: "sed -n '/^[[:alnum:]]*: {{ runner_vm_snippets_storage }}$/,/^$/p' /etc/pve/storage.cfg | sed -n 's/^[[:space:]]*content //p'"
+  register: runner_snippet_content
+  changed_when: false
+
+- name: Enable cloud-init snippets on the snippet storage
+  ansible.builtin.command:
+    cmd: >-
+      pvesm set {{ runner_vm_snippets_storage }}
+      --content {{ (((runner_snippet_content.stdout | trim).split(',') | map('trim') | reject('equalto', '') | list) + ['snippets']) | unique | join(',') }}
+  when: "'snippets' not in (runner_snippet_content.stdout | trim).split(',')"
+  changed_when: true
+
+- name: Check whether each runner VM already exists (cluster-wide)
+  ansible.builtin.shell:
+    cmd: "ls /etc/pve/nodes/*/qemu-server/{{ item.vmid }}.conf 2>/dev/null"
+  loop: "{{ runner_vms }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.vmid }})"
+  register: runner_vm_exists
+  changed_when: false
+  failed_when: false
+
+- name: Ensure the snippets directory exists on each target node
+  ansible.builtin.file:
+    path: "{{ runner_vm_snippets_path }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item.node }}"
+  loop: "{{ runner_vms }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.node }}"
+
+- name: Render the cloud-init user-data snippet on each target node
+  ansible.builtin.template:
+    src: user-data.yaml.j2
+    dest: "{{ runner_vm_snippets_path }}/user-data-{{ item.name }}.yaml"
+    mode: "0644"
+  delegate_to: "{{ item.node }}"
+  loop: "{{ runner_vms }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.node }}"
+  # The rendered snippet embeds the tailscale auth key — keep it out of task output.
+  no_log: true
+
+- name: Clone the template into each runner VM
+  ansible.builtin.command: >-
+    qm clone {{ runner_vm_template_id }} {{ item.0.vmid }}
+    --name {{ item.0.name }}
+    --full --storage {{ runner_vm_storage }}
+    --target {{ item.0.node.split('.')[0] }}
+  loop: "{{ runner_vms | zip(runner_vm_exists.results) | list }}"
+  loop_control:
+    label: "{{ item.0.name }} -> {{ item.0.node }}"
+  when: item.1.rc != 0
+  changed_when: true
+
+- name: Configure cores, memory, cloud-init source, and DHCP on each runner VM
+  ansible.builtin.command: >-
+    qm set {{ item.0.vmid }}
+    --cores {{ item.0.cores }} --memory {{ item.0.memory }}
+    --onboot 1
+    --cicustom "user={{ runner_vm_snippets_storage }}:snippets/user-data-{{ item.0.name }}.yaml"
+    --ipconfig0 ip=dhcp
+  delegate_to: "{{ item.0.node }}"
+  loop: "{{ runner_vms | zip(runner_vm_exists.results) | list }}"
+  loop_control:
+    label: "{{ item.0.name }}"
+  when: item.1.rc != 0
+  changed_when: true
+
+- name: Grow the boot disk to the requested size
+  ansible.builtin.command: "qm disk resize {{ item.0.vmid }} scsi0 {{ item.0.disk }}G"
+  delegate_to: "{{ item.0.node }}"
+  loop: "{{ runner_vms | zip(runner_vm_exists.results) | list }}"
+  loop_control:
+    label: "{{ item.0.name }} -> {{ item.0.disk }}G"
+  when: item.1.rc != 0
+  changed_when: true
+
+- name: Start each runner VM
+  ansible.builtin.command: "qm start {{ item.0.vmid }}"
+  delegate_to: "{{ item.0.node }}"
+  loop: "{{ runner_vms | zip(runner_vm_exists.results) | list }}"
+  loop_control:
+    label: "{{ item.0.name }}"
+  when: item.1.rc != 0
+  changed_when: true
