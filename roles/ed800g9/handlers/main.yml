@@ -1,2 +1,5 @@
 - name: Restart networking
   ansible.builtin.command: ifup enp8s0
+
+- name: Disable eno1 offloads now
+  ansible.builtin.command: /usr/sbin/ethtool -K eno1 gso off gro off tso off

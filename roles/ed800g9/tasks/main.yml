@@ -9,6 +9,32 @@
           mtu 9000
   notify: Restart networking
 
+# The G9 onboard 1GbE NIC (eno1, Intel e1000e) hangs its TX unit under
+# load: CI-runner traffic over vmbr0 triggered "Detected Hardware Unit
+# Hang", dropping the host off management. Disabling segmentation
+# offloads is the fix; an ifupdown hook re-applies it on boot + ifreload.
+- name: Ensure ethtool is installed
+  ansible.builtin.apt:
+    name: ethtool
+    state: present
+
+- name: Install e1000e eno1 offload workaround (TX Hardware Unit Hang)
+  ansible.builtin.copy:
+    dest: /etc/network/if-up.d/eno1-disable-offloads
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      # ANSIBLE MANAGED - disable e1000e offloads on eno1 to avoid the
+      # "Detected Hardware Unit Hang" TX lockup on the G9 onboard NIC.
+      # Runs on ifup of eno1/vmbr0 so it survives reboots and reloads.
+      case "$IFACE" in
+      eno1|vmbr0) /usr/sbin/ethtool -K eno1 gso off gro off tso off ;;
+      esac
+      exit 0
+  notify: Disable eno1 offloads now
+
 - name: Install lm-sensors
   ansible.builtin.apt:
     name: lm-sensors
