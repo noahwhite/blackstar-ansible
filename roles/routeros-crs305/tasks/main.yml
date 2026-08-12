@@ -1,26 +1,99 @@
-- name: Create SFP+ bridge
-  community.routeros.command:
-    commands:
-      - /interface bridge add name={{ crs305_sfp_bridge }} comment="10Gb Ceph network"
-  register: bridge_add
-  failed_when: bridge_add.stdout is defined and 'failure' in bridge_add.stdout[0] and 'already' not in bridge_add.stdout[0]
+# =============================================================================
+# CRS305 10G Ceph switch — pure L2 VLAN isolation on the built-in "bridge".
+#
+# Cluster ports (sfp-sfpplus1/2/3) are access ports on VLAN 10 with NO IP on the
+# switch, so the Ceph net is hardware-switched jumbo-frame L2 only. Management
+# (ether1 + the CSS610 uplink sfp-sfpplus4 + the bridge CPU) stays on VLAN 1,
+# which keeps 192.168.1.190 reachable when vlan-filtering activates.
+#
+# Order matters: stage the VLAN table + PVIDs and kill the bleed BEFORE enabling
+# vlan-filtering (the activation step), so the management path is already in
+# place the instant filtering turns on and Ansible does not lose the switch.
+#
+# Change detection is not available over the RouterOS CLI for the idempotent
+# set/remove steps, so those are marked changed_when: false; the structural
+# `add` steps report changed honestly (empty stdout == a row was created).
+# =============================================================================
 
-- name: Add SFP+ ports to bridge
+- name: Remove the obsolete separate SFP bridge (legacy L3-bleed design)
   community.routeros.command:
     commands:
-      - /interface bridge port add bridge={{ crs305_sfp_bridge }} interface={{ item }}
-  loop: "{{ crs305_sfp_ports }}"
-  register: port_add
-  failed_when: port_add.stdout is defined and 'failure' in port_add.stdout[0] and 'already' not in port_add.stdout[0]
+      - "/interface bridge remove [find name=bridge-sfp]"
+  changed_when: false
 
-- name: Assign IP to SFP+ bridge
+- name: Ensure all cluster + management ports are members of the bridge
   community.routeros.command:
     commands:
-      - /ip address add address={{ crs305_ceph_address }} interface={{ crs305_sfp_bridge }} network={{ crs305_ceph_network }} comment="Ceph gateway"
-  register: ip_add
-  failed_when: ip_add.stdout is defined and 'failure' in ip_add.stdout[0] and 'already' not in ip_add.stdout[0]
+      - >-
+        /interface bridge port add bridge={{ crs305_bridge }}
+        interface={{ item }}
+  loop: "{{ crs305_cluster_ports + crs305_mgmt_ports }}"
+  register: crs305_port_add
+  changed_when: >-
+    crs305_port_add.stdout is defined
+    and (crs305_port_add.stdout[0] | length) == 0
+  failed_when:
+    - crs305_port_add.stdout is defined
+    - "'failure' in crs305_port_add.stdout[0]"
+    - "'already' not in crs305_port_add.stdout[0]"
 
-- name: Enable IP forwarding
+- name: Set PVID on the cluster (VLAN 10) access ports
   community.routeros.command:
     commands:
-      - /ip settings set ip-forward=yes
+      - >-
+        /interface bridge port set [find interface={{ item }}]
+        pvid={{ crs305_cluster_vlan }}
+  loop: "{{ crs305_cluster_ports }}"
+  changed_when: false
+
+- name: Map the cluster VLAN to the cluster ports (untagged access)
+  community.routeros.command:
+    commands:
+      - >-
+        /interface bridge vlan add bridge={{ crs305_bridge }}
+        vlan-ids={{ crs305_cluster_vlan }}
+        untagged={{ crs305_cluster_ports | join(',') }}
+  register: crs305_cluster_vlan_add
+  changed_when: >-
+    crs305_cluster_vlan_add.stdout is defined
+    and (crs305_cluster_vlan_add.stdout[0] | length) == 0
+  failed_when:
+    - crs305_cluster_vlan_add.stdout is defined
+    - "'failure' in crs305_cluster_vlan_add.stdout[0]"
+    - "'already' not in crs305_cluster_vlan_add.stdout[0]"
+
+- name: Map the management VLAN to the mgmt ports + bridge CPU (untagged)
+  community.routeros.command:
+    commands:
+      - >-
+        /interface bridge vlan add bridge={{ crs305_bridge }}
+        vlan-ids={{ crs305_mgmt_vlan }}
+        untagged={{ (crs305_mgmt_ports + [crs305_bridge]) | join(',') }}
+  register: crs305_mgmt_vlan_add
+  changed_when: >-
+    crs305_mgmt_vlan_add.stdout is defined
+    and (crs305_mgmt_vlan_add.stdout[0] | length) == 0
+  failed_when:
+    - crs305_mgmt_vlan_add.stdout is defined
+    - "'failure' in crs305_mgmt_vlan_add.stdout[0]"
+    - "'already' not in crs305_mgmt_vlan_add.stdout[0]"
+
+- name: Purge any switch IP on the cluster subnet (kills the subnet bleed)
+  community.routeros.command:
+    commands:
+      - "/ip address remove [find network={{ crs305_cluster_network }}]"
+  changed_when: false
+
+- name: Disable IP forwarding (switch is pure L2, no cross-subnet routing)
+  community.routeros.command:
+    commands:
+      - /ip settings set ip-forward=no
+  changed_when: false
+
+# Activation — MUST be last. VLAN 1 already covers the mgmt path (ether1,
+# sfp-sfpplus4, bridge CPU), so enabling filtering does not drop 192.168.1.190.
+- name: Enable bridge VLAN filtering
+  community.routeros.command:
+    commands:
+      - "/interface bridge set {{ crs305_bridge }} vlan-filtering=yes"
+  changed_when: false

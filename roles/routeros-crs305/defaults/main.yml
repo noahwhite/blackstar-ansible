@@ -1,9 +1,26 @@
-crs305_sfp_bridge: bridge-sfp
-crs305_sfp_ports:
+# CRS305 10G Ceph switch — pure L2 VLAN isolation on the built-in "bridge".
+#
+# The cluster ports are access ports on an isolated VLAN with NO L3 presence on
+# the switch: the Ceph network is hardware-switched, jumbo-frame, L2-only.
+# Management (ether1 + the CSS610 uplink + the bridge CPU) stays on VLAN 1 so
+# 192.168.1.190 remains reachable once vlan-filtering activates.
+#
+# NEVER give the switch an address on the cluster subnet and never enable
+# ip-forward: that puts the CPU on both subnets, leaks traffic between them and
+# emits ICMP redirects that poison the hosts with bogus 10.10.10.0/24 routes and
+# blackhole jumbo frames. That is the exact failure this role exists to prevent.
+crs305_bridge: bridge
+
+crs305_cluster_vlan: 10
+crs305_cluster_ports:
   - sfp-sfpplus1
   - sfp-sfpplus2
   - sfp-sfpplus3
+
+crs305_mgmt_vlan: 1
+crs305_mgmt_ports:
+  - ether1
   - sfp-sfpplus4
-crs305_ceph_address: 10.10.10.1/24
-crs305_ceph_network: 10.10.10.0
-crs305_mgmt_interface: ether1
+
+# Any switch IP on this network is purged (kills the subnet bleed).
+crs305_cluster_network: 10.10.10.0
