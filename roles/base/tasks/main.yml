@@ -27,6 +27,26 @@
     line: 'PasswordAuthentication no'
   notify: Restart ssh
 
+# The Ceph cluster net is directly attached and L2-isolated, so a node must
+# never accept an ICMP redirect that reroutes 10.10.10.0/24 through the
+# management bridge. The upstream gateway still emits such redirects (a stale
+# cluster-subnet route), which poisons the FIB with a /32 via vmbr0 and
+# blackholes jumbo Ceph traffic. Refuse redirects so the connected enp8s0 route
+# always wins.
+- name: Harden network - ignore ICMP redirects
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-blackstar-no-redirects.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (base role) — do not edit.
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.all.secure_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv4.conf.default.secure_redirects = 0
+  notify: Reload sysctl
+
 - name: Install common packages
   ansible.builtin.apt:
     name:
