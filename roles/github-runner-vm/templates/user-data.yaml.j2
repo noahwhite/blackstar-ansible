@@ -51,6 +51,13 @@ runcmd:
 {% if runner_vm_ciuser | length > 0 %}
   - usermod -aG docker {{ runner_vm_ciuser }}
 {% endif %}
+  # Persistent journald so the officina Alloy container (deployed later by
+  # provision-runner.sh, which bind-mounts /var/log/journal) can ship journal
+  # logs. Without this journald stays volatile and no logs reach Grafana —
+  # matches the Hetzner runner cloud-init.
+  - mkdir -p /var/log/journal
+  - systemd-tmpfiles --create --prefix /var/log/journal
+  - systemctl restart systemd-journald
   - mkdir -p /opt/github-runner /etc/alloy
   - |
     cat > /etc/cron.weekly/docker-cleanup <<'EOF'
