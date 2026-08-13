@@ -1,5 +1,13 @@
+# Ceph 10Gb cluster network. The interface itself is owned by the ed800g9 role
+# (enp8s0 = {{ ceph_ip }}/24, MTU 9000, directly attached); this role only lays
+# down the optional interfaces.d snippet on nodes that set ceph_network_interface
+# and cleans up the obsolete L3 route hook.
 ceph_network_subnet: 10.10.10.0/24
 ceph_network_netmask: 255.255.255.0
-ceph_network_gateway: 10.10.10.1
 ceph_network_mtu: 9000
+
+# The CRS305's management IP — the L3 gateway the switch USED to expose on the
+# cluster subnet. It is no longer a route target (the net is L2-only now); it is
+# kept solely so the role can purge the obsolete host route
+# `{{ ceph_network_subnet }} via {{ ceph_route_via }}` the old if-up hook added.
 ceph_route_via: 192.168.1.190
