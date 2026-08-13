@@ -129,10 +129,13 @@
   no_log: true
 
 - name: Clone the template into each runner VM
+  # Per-VM storage override: nodes with no Ceph access (the m75q, off the 10G
+  # cluster net) place their runner disk on node-local storage instead of the
+  # shared vm-storage RBD pool. Defaults to runner_vm_storage (vm-storage).
   ansible.builtin.command: >-
     qm clone {{ runner_vm_template_id }} {{ item.0.vmid }}
     --name {{ item.0.name }}
-    --full --storage {{ runner_vm_storage }}
+    --full --storage {{ item.0.storage | default(runner_vm_storage) }}
     --target {{ item.0.node.split('.')[0] }}
   loop: "{{ runner_vms | zip(runner_vm_exists.results) | list }}"
   loop_control:
