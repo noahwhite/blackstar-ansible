@@ -1,7 +1,10 @@
 alloy_cluster_enabled: true
 
 mikrotik_snmp_targets:
+  # CRS305 has no cluster-subnet IP (the L2 VLAN-isolation rewrite removed
+  # 10.10.10.1); scrape it over management. Was 10.10.10.1 → dead target,
+  # snmp `up=0`, when the switch stopped doing L3 on the Ceph net.
   - name: crs305
-    address: 10.10.10.1
+    address: 192.168.1.190
   - name: css610
     address: 192.168.1.195
