@@ -43,3 +43,22 @@
     owner: root
     group: root
     mode: "0644"
+
+# The atlantic Thunderbolt->SFP+ 10G NIC throws fatal, unrecoverable PCIe AERs
+# under sustained load when ASPM is active (D0->D3hot link-power transitions),
+# which drops the node off the Ceph net. Forcing the ASPM policy to
+# "performance" (L0 only, no L0s/L1) prevents it — validated live under a full
+# runner-VM clone. Persisted via tmpfiles (a /sys write at boot) rather than a
+# kernel cmdline arg, to avoid disturbing the custom Secure Boot chain; the NIC
+# fails under load, not at early boot, so applying it via tmpfiles is early
+# enough. Runtime effect requires no reboot.
+- name: Persist PCIe ASPM policy = performance (Thunderbolt NIC AER fix)
+  ansible.builtin.copy:
+    dest: /etc/tmpfiles.d/pcie-aspm.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (ed800g9 role) — do not edit.
+      w /sys/module/pcie_aspm/parameters/policy - - - - performance
+  notify: Apply pcie-aspm tmpfiles
