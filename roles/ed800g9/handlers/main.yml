@@ -1,2 +1,6 @@
 - name: Restart networking
   ansible.builtin.command: ifup enp8s0
+
+- name: Apply pcie-aspm tmpfiles
+  ansible.builtin.command: systemd-tmpfiles --create /etc/tmpfiles.d/pcie-aspm.conf
+  changed_when: false

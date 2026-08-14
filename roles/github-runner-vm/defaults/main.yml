@@ -67,6 +67,7 @@ officina_ci_tailscale_authkey: ""
 runner_vms:
   - {vmid: 8001, name: officina-runner-1, node: pve05.home.arpa, cores: 4, memory: 8192, disk: 80}
   - {vmid: 8002, name: officina-runner-2, node: pve06.home.arpa, cores: 4, memory: 8192, disk: 80}
+  - {vmid: 8003, name: officina-runner-3, node: pve07.home.arpa, cores: 4, memory: 8192, disk: 80}
   # m75q nodes — no Ceph access, so the disk lives on node-local ZFS (clone on
   # the template owner, then migrate). pve01 (Ryzen 7, 16t) + pve04 (Ryzen 5
   # 5650GE, 12t) are the strongest m75q.
