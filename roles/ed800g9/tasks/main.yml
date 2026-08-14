@@ -62,3 +62,8 @@
       # Managed by Ansible (ed800g9 role) — do not edit.
       w /sys/module/pcie_aspm/parameters/policy - - - - performance
   notify: Apply pcie-aspm tmpfiles
+  # Tagged so the NIC-AER fix applies alongside the base redirect hardening in a
+  # single scoped run (`--tags hardening`), without a full site.yml pass that
+  # would also fire the cluster/ceph/network plays.
+  tags:
+    - hardening
