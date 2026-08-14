@@ -24,6 +24,20 @@ prometheus.relabel "friendly_names" {
     regex         = "node_cpu_scaling_governor|node_cpu_frequency_(min|max)_hertz|node_cpu_scaling_frequency_(min|max)_hertz"
     action        = "drop"
   }
+  // Drop the 4 unused systemd unit states — only state="failed" is consumed by any
+  // dashboard/alert. node_systemd_unit_state emits 5 states x every unit; on the
+  // officina CI-runner VMs this is the single largest active-series contributor
+  // (~1000 series/runner, mostly the non-failed states) on the shared officina
+  // Grafana Cloud tenant, and the churny activating/deactivating states from
+  // ephemeral CI job units drive its active-series rejections. Keeping only
+  // "failed" cuts ~4 series per unit. The "@" separator lets one regex match the
+  // __name__;state pair.
+  rule {
+    source_labels = ["__name__", "state"]
+    separator     = "@"
+    regex         = "node_systemd_unit_state@(active|activating|deactivating|inactive)"
+    action        = "drop"
+  }
 
   rule {
     source_labels = ["chip"]
