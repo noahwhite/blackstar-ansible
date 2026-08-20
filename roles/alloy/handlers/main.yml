@@ -6,3 +6,7 @@
   ansible.builtin.systemd:
     name: alloy
     state: restarted
+
+- name: Reload systemd for AER units
+  ansible.builtin.systemd:
+    daemon_reload: true
