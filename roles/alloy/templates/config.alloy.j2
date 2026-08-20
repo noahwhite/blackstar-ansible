@@ -5,6 +5,14 @@ prometheus.exporter.unix "local_system" {
   //   schedstat    ~324 series  (per-CPU scheduler stats)
   //   thermal_zone ~278 series  (node_cooling_device_*; temps come from hwmon)
   disable_collectors = ["softnet", "schedstat", "thermal_zone"]
+
+  // PCIe AER counters, written by pcie-aer-textfile.timer. node_exporter has no
+  // AER collector, and correctable RxErr/BadTLP counts are the leading indicator
+  // for the fatal atlantic AERs that drop a node off the Ceph net (PD #29).
+  // 42 series/node (14 AER-capable devices x 3 severities) — ~1.3% of the 10k cap.
+  textfile {
+    directory = "{{ alloy_textfile_dir }}"
+  }
 }
 
 prometheus.relabel "friendly_names" {

@@ -19,6 +19,82 @@
     name: alloy
     state: present
 
+# Correctable PCIe AER counts climb for days before the atlantic Thunderbolt NIC
+# throws the fatal AER that drops a node off the Ceph net (PD #29, OFF-633).
+# Nothing scraped them, so the only signal was node memory going critical ~43h
+# after the fact. node_exporter has no AER collector; surface them via the
+# textfile collector instead.
+- name: Create Alloy textfile collector directory
+  ansible.builtin.file:
+    path: "{{ alloy_textfile_dir }}"
+    state: directory
+    owner: root
+    group: alloy
+    mode: "0750"
+
+- name: Deploy PCIe AER textfile exporter script
+  ansible.builtin.copy:
+    src: pcie-aer-textfile.sh
+    dest: /usr/local/bin/pcie-aer-textfile.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy PCIe AER exporter systemd units
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: pcie-aer-textfile.service
+      content: |
+        # Managed by Ansible (alloy role) — do not edit.
+        [Unit]
+        Description=Write PCIe AER counters for the node_exporter textfile collector
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/pcie-aer-textfile.sh {{ alloy_textfile_dir }}/pcie_aer.prom
+    - name: pcie-aer-textfile.timer
+      content: |
+        # Managed by Ansible (alloy role) — do not edit.
+        [Unit]
+        Description=Refresh PCIe AER textfile metrics
+
+        [Timer]
+        OnBootSec=1min
+        OnUnitActiveSec={{ alloy_scrape_interval }}
+        AccuracySec=5s
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd for AER units
+
+- name: Flush handlers so the AER units are loaded before enabling the timer
+  ansible.builtin.meta: flush_handlers
+
+# Skipped under --check: check mode never writes the unit files above, so
+# systemd would fail with "Could not find the requested service" and mask any
+# real finding in the dry run.
+- name: Enable and start the PCIe AER exporter timer
+  ansible.builtin.systemd:
+    name: pcie-aer-textfile.timer
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+# Run once now so the .prom file exists before Alloy's first scrape; otherwise
+# the series are absent until the timer first fires and any rate() over that
+# window has no data to work with.
+- name: Generate PCIe AER metrics immediately
+  ansible.builtin.command: /usr/local/bin/pcie-aer-textfile.sh {{ alloy_textfile_dir }}/pcie_aer.prom
+  changed_when: false
+  when: not ansible_check_mode
+
 - name: Deploy Alloy configuration
   ansible.builtin.template:
     src: config.alloy.j2

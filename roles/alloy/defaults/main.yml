@@ -2,5 +2,8 @@ alloy_remote_write_url: "https://prometheus-prod-56-prod-us-east-2.grafana.net/a
 alloy_remote_write_username: "2702253"
 alloy_scrape_interval: "60s"
 
+# node_exporter textfile collector drop directory (PCIe AER counters, NWSOC).
+alloy_textfile_dir: "/var/lib/alloy/textfile_collector"
+
 mikrotik_snmp_community: "public"
 alloy_cluster_enabled: false
