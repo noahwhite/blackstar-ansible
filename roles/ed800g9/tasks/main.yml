@@ -45,13 +45,19 @@
     mode: "0644"
 
 # The atlantic Thunderbolt->SFP+ 10G NIC throws fatal, unrecoverable PCIe AERs
-# under sustained load when ASPM is active (D0->D3hot link-power transitions),
-# which drops the node off the Ceph net. Forcing the ASPM policy to
-# "performance" (L0 only, no L0s/L1) prevents it — validated live under a full
-# runner-VM clone. Persisted via tmpfiles (a /sys write at boot) rather than a
-# kernel cmdline arg, to avoid disturbing the custom Secure Boot chain; the NIC
-# fails under load, not at early boot, so applying it via tmpfiles is early
-# enough. Runtime effect requires no reboot.
+# that drop the node off the Ceph net. Forcing the ASPM policy to "performance"
+# (L0 only, no L0s/L1) cut the rate roughly 9x per node-day, but did NOT
+# eliminate it — pve06 failed again on 2026-08-18 with this in effect (PD #29,
+# OFF-633). Keep it; see the runtime-PM task below for the follow-on fix.
+#
+# NB: the original "fails under sustained load" reading is FALSIFIED. At the
+# instant of the pve06 AER the link was carrying 0.22 MB/s (idle); the window
+# peaked at 29 MB/s, ~2% of 10 Gb. Do not re-derive a load hypothesis from the
+# qm-clone correlation seen on 2026-08-13 — that was coincidence.
+#
+# Persisted via tmpfiles (a /sys write at boot) rather than a kernel cmdline
+# arg, to avoid disturbing the custom Secure Boot chain. Runtime effect requires
+# no reboot.
 - name: Persist PCIe ASPM policy = performance (Thunderbolt NIC AER fix)
   ansible.builtin.copy:
     dest: /etc/tmpfiles.d/pcie-aspm.conf
@@ -65,5 +71,42 @@
   # Tagged so the NIC-AER fix applies alongside the base redirect hardening in a
   # single scoped run (`--tags hardening`), without a full site.yml pass that
   # would also fire the cluster/ceph/network plays.
+  tags:
+    - hardening
+
+# Follow-on to the ASPM fix above. ASPM governs L0s/L1 *link* states; it does
+# nothing about D-state *runtime suspend*, which is what the failure signature
+# actually points at: on a healthy node the thunderbolt controller sits at
+# `control=auto status=suspended` while the NIC below it is active, and the
+# pve06 AER wedged on exactly those devices with
+# "Unable to change power state from D0 to D3hot, device inaccessible".
+# Failures occur at idle, which is precisely when runtime PM suspends things.
+#
+# Matched by DRIVER rather than PCI address on purpose: the thunderbolt
+# controller is NOT in the NIC's parent-bridge chain (it hangs off a sibling
+# branch), and addresses can shift when the bus re-enumerates after an AER, so
+# a hardcoded BDF list would silently miss the device that matters.
+#
+# ACTION=="add|bind": on a bare "add" the driver is not yet bound, so DRIVER==
+# would not match — "bind" is what fires once binding completes.
+#
+# Trade-off: this disables PCIe runtime power management for every pcieport
+# bridge on the box, not just the Thunderbolt chain. On always-on cluster nodes
+# the idle-power cost is negligible against four fatal AERs in a week.
+#
+# ⚠️ HYPOTHESIS, not a proven fix. Validate by watching whether pve06 survives
+# past the ~7-day interval at which it failed with only ASPM applied.
+- name: Disable PCIe runtime power management on the Thunderbolt/NIC chain
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/80-pcie-runtime-pm.rules
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (ed800g9 role) — do not edit.
+      ACTION=="add|bind", SUBSYSTEM=="pci", DRIVER=="thunderbolt", ATTR{power/control}="on"
+      ACTION=="add|bind", SUBSYSTEM=="pci", DRIVER=="pcieport", ATTR{power/control}="on"
+      ACTION=="add|bind", SUBSYSTEM=="pci", DRIVER=="atlantic", ATTR{power/control}="on"
+  notify: Apply pcie runtime-pm rule
   tags:
     - hardening
