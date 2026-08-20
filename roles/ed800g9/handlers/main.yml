@@ -4,3 +4,22 @@
 - name: Apply pcie-aspm tmpfiles
   ansible.builtin.command: systemd-tmpfiles --create /etc/tmpfiles.d/pcie-aspm.conf
   changed_when: false
+
+# Reload so the rule is live for future hotplug/re-enumeration, then apply it to
+# already-bound devices by hand. Deliberately NOT `udevadm trigger` — replaying
+# add events across the PCI subsystem on a node whose Ceph NIC has already
+# thrown a fatal AER is a needless risk when a direct sysfs write does the job.
+- name: Apply pcie runtime-pm rule
+  ansible.builtin.shell: |
+    set -eu
+    udevadm control --reload-rules
+    for drv in thunderbolt pcieport atlantic; do
+      for dev in /sys/bus/pci/drivers/"$drv"/0000:*; do
+        [ -e "$dev/power/control" ] && echo on > "$dev/power/control" 2>/dev/null || true
+      done
+    done
+  # Test -e, not -w: power/control is root-writable only, so -w evaluates false
+  # for any non-root caller and the `|| true` then swallows the whole apply,
+  # leaving every device at `auto` while the handler still reports success.
+  # (Hit exactly that during the manual pve06 apply on 2026-08-20.)
+  changed_when: false
