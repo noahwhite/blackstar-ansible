@@ -23,3 +23,7 @@
   # leaving every device at `auto` while the handler still reports success.
   # (Hit exactly that during the manual pve06 apply on 2026-08-20.)
   changed_when: false
+
+- name: Reload systemd for cstate limiter
+  ansible.builtin.systemd:
+    daemon_reload: true
