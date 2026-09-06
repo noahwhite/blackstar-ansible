@@ -1,0 +1,32 @@
+# =============================================================================
+# qa-runner — provisions the officina QA verification workstation (OFF-856).
+#
+# This is officina-qa-runner-1 (vmid 8006), born by the github-runner-vm role
+# but NOT used as a GitHub Actions runner: it is a standing, agent-driven QA box
+# (Model B). It reaches dev from the WAF-allowlisted home egress (173.48.235.97),
+# drives a headless browser against the portal + operator console, and pulls its
+# QA credentials from Infisical over the tailnet.
+#
+# Deliberately isolated from the pve `base`/`alloy` plays (see qa-runner.yml +
+# inventories/qa/): a guest VM, not a cluster node.
+# =============================================================================
+
+# Node.js — base for the agent CLIs and Playwright.
+qa_node_major: 22
+
+# Agent CLIs the verification harness drives (installed globally via npm).
+qa_agent_npm_packages:
+  - "@anthropic-ai/claude-code"
+  - "@openai/codex"
+  - "opencode-ai"
+
+# Playwright working directory + browser. Chromium (headless shell) is enough
+# for the portal/console verification; --with-deps pulls the OS libraries.
+qa_workdir: /opt/qa
+qa_playwright_browser: chromium
+
+# Self-hosted Infisical host the box authenticates to (tailnet-only). The QA
+# universal-auth identity's client id/secret are delivered separately (Tofu in
+# officina provisions the identity); this role only installs the CLI + points
+# the box's Infisical config at the right host.
+qa_infisical_host: "https://scarif.officina.pub"
