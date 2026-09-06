@@ -69,8 +69,7 @@
   ansible.builtin.command:
     cmd: "npx --yes playwright install --with-deps {{ qa_playwright_browser }}"
     chdir: "{{ qa_workdir }}"
-  register: qa_playwright
-  changed_when: "'downloaded' in qa_playwright.stdout or 'Installing dependencies' in qa_playwright.stdout"
+    creates: "{{ qa_playwright_cache }}"
 
 # --- Infisical CLI ----------------------------------------------------------
 # The box pulls QA credentials from self-hosted Infisical over the tailnet

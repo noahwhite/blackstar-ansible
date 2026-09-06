@@ -24,6 +24,11 @@ qa_agent_npm_packages:
 # for the portal/console verification; --with-deps pulls the OS libraries.
 qa_workdir: /opt/qa
 qa_playwright_browser: chromium
+# Playwright browser cache (root user). Used as the install task's `creates`
+# guard so a re-converge is idempotent. On a Playwright version bump the cached
+# build dir changes; remove this path to force a re-pull (a fresh box installs
+# it anyway).
+qa_playwright_cache: /root/.cache/ms-playwright
 
 # Self-hosted Infisical host the box authenticates to (tailnet-only). The QA
 # universal-auth identity's client id/secret are delivered separately (Tofu in
