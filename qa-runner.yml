@@ -1,0 +1,15 @@
+# Provision the officina QA verification workstation (OFF-856).
+#
+# Deliberately separate from site.yml + the homelab inventory so it never runs
+# the pve base/proxmox/alloy plays against a guest VM. Run from a tailnet host
+# (blacksun) with tailscale-ssh root to tag:officina-ci:
+#
+#   ansible-playbook -i inventories/qa/hosts.yml qa-runner.yml
+#
+# Idempotent: a converge on an already-provisioned box reports no changes.
+- name: QA verification workstation
+  hosts: qa_runners
+  gather_facts: true
+  become: false # connected as root over Tailscale SSH; no privilege escalation
+  roles:
+    - qa-runner

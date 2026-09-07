@@ -1,0 +1,225 @@
+# =============================================================================
+# qa-runner tasks — idempotent provisioning of the QA verification workstation.
+# Re-runnable: each install is guarded, so a converge on an already-provisioned
+# box reports no changes.
+# =============================================================================
+
+- name: Install base apt prerequisites
+  ansible.builtin.apt:
+    name:
+      - curl
+      - jq
+      - ca-certificates
+      - gnupg
+      - xz-utils
+    state: present
+    update_cache: true
+
+# --- Node.js (NodeSource) ---------------------------------------------------
+- name: Check the installed Node.js major version
+  ansible.builtin.command: node --version
+  register: qa_node_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Node.js {{ qa_node_major }} from NodeSource
+  when: >-
+    qa_node_check.rc != 0
+    or not (qa_node_check.stdout | default('')).startswith('v' ~ qa_node_major ~ '.')
+  block:
+    - name: Add the NodeSource apt repository
+      ansible.builtin.shell:
+        cmd: "set -o pipefail && curl -fsSL https://deb.nodesource.com/setup_{{ qa_node_major }}.x | bash -"
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Install nodejs
+      ansible.builtin.apt:
+        name: nodejs
+        state: present
+        update_cache: true
+
+# --- Agent CLIs (npm global) ------------------------------------------------
+- name: Install the agent CLIs globally
+  community.general.npm:
+    name: "{{ item }}"
+    global: true
+    state: present
+  loop: "{{ qa_agent_npm_packages }}"
+
+# --- Playwright + browser ---------------------------------------------------
+- name: Ensure the QA working directory exists
+  ansible.builtin.file:
+    path: "{{ qa_workdir }}"
+    state: directory
+    mode: "0755"
+
+- name: Initialise a package.json for the Playwright install
+  ansible.builtin.command:
+    cmd: npm init -y
+    chdir: "{{ qa_workdir }}"
+    creates: "{{ qa_workdir }}/package.json"
+
+- name: Install @playwright/test in the QA workdir
+  community.general.npm:
+    name: "@playwright/test"
+    path: "{{ qa_workdir }}"
+    state: present
+
+- name: Install the Playwright browser and its OS dependencies
+  ansible.builtin.command:
+    cmd: "npx --yes playwright install --with-deps {{ qa_playwright_browser }}"
+    chdir: "{{ qa_workdir }}"
+    creates: "{{ qa_playwright_cache }}"
+
+# --- Infisical CLI ----------------------------------------------------------
+# The box pulls QA credentials from self-hosted Infisical over the tailnet
+# (tag:officina-ci -> infisical:443). The universal-auth QA identity's
+# client_id/secret are delivered out of band (Tofu provisions the identity);
+# this role only installs the CLI.
+- name: Check for the Infisical CLI
+  ansible.builtin.command: infisical --version
+  register: qa_infisical_check
+  changed_when: false
+  failed_when: false
+
+- name: Install the Infisical CLI from its apt repository
+  when: qa_infisical_check.rc != 0
+  block:
+    - name: Add the Infisical apt source
+      ansible.builtin.shell:
+        cmd: "set -o pipefail && curl -1sLf https://artifacts-cli.infisical.com/setup.deb.sh | bash"
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Install infisical
+      ansible.builtin.apt:
+        name: infisical
+        state: present
+        update_cache: true
+
+# --- GitHub CLI (gh) --------------------------------------------------------
+# The harness reads GitHub read-only. `gh` is far more token-efficient than the
+# GitHub MCP: `gh api ... --jq '<fields>'` returns exactly the requested fields
+# rather than a verbose tool result. It authenticates from the GH_TOKEN env var
+# at runtime (a READ-ONLY fine-grained PAT delivered from Infisical /qa as
+# QA_GH_TOKEN) - no `gh auth login`, no token on disk. Read-only is enforced by
+# the PAT scope, so any write 403s at GitHub regardless of the command.
+- name: Check for the GitHub CLI
+  ansible.builtin.command: gh --version
+  register: qa_gh_check
+  changed_when: false
+  failed_when: false
+
+- name: Install the GitHub CLI from its apt repository
+  when: qa_gh_check.rc != 0
+  block:
+    - name: Ensure the apt keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add the GitHub CLI apt signing key
+      ansible.builtin.get_url:
+        url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+        dest: /etc/apt/keyrings/githubcli-archive-keyring.gpg
+        mode: "0644"
+
+    - name: Detect the dpkg architecture
+      ansible.builtin.command: dpkg --print-architecture
+      register: qa_dpkg_arch
+      changed_when: false
+
+    - name: Add the GitHub CLI apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ qa_dpkg_arch.stdout }}
+          signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg]
+          https://cli.github.com/packages stable main
+        filename: github-cli
+        state: present
+
+    - name: Install gh
+      ansible.builtin.apt:
+        name: gh
+        state: present
+        update_cache: true
+
+# --- Linear CLI (schpet/linear-cli) -----------------------------------------
+# The harness reads Linear read-only via `linear` - token-efficient like gh
+# (`linear issue view <ID>` returns just the issue vs the verbose Linear MCP).
+# Standalone binary (no Deno/npm runtime), pinned + checksum-verified. It
+# authenticates from LINEAR_AUTH_TOKEN at runtime (a READ-ONLY Linear API key
+# delivered from Infisical /qa as QA_LINEAR_API_KEY) - no `linear auth login`,
+# no token on disk; read-only is the key's scope.
+- name: Check the installed linear-cli version
+  ansible.builtin.command: linear --version
+  register: qa_linear_check
+  changed_when: false
+  failed_when: false
+
+- name: Install linear-cli {{ qa_linear_version }} (pinned, checksum-verified)
+  when: >-
+    qa_linear_check.rc != 0
+    or qa_linear_version not in (qa_linear_check.stdout | default(''))
+  block:
+    - name: Download the linear-cli release tarball
+      ansible.builtin.get_url:
+        url: "https://github.com/schpet/linear-cli/releases/download/v{{ qa_linear_version }}/linear-x86_64-unknown-linux-gnu.tar.xz"
+        dest: "/tmp/linear-cli-{{ qa_linear_version }}.tar.xz"
+        checksum: "sha256:{{ qa_linear_sha256 }}"
+        mode: "0644"
+
+    - name: Extract the linear-cli tarball
+      ansible.builtin.unarchive:
+        src: "/tmp/linear-cli-{{ qa_linear_version }}.tar.xz"
+        dest: /tmp
+        remote_src: true
+
+    - name: Install the linear binary to /usr/local/bin
+      ansible.builtin.copy:
+        src: /tmp/linear-x86_64-unknown-linux-gnu/linear
+        dest: /usr/local/bin/linear
+        remote_src: true
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Clean up the linear-cli download
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/linear-cli-{{ qa_linear_version }}.tar.xz"
+        - /tmp/linear-x86_64-unknown-linux-gnu
+
+# --- QA canary --------------------------------------------------------------
+# The reproducible smoke test: one read-only probe per lane (portal, console,
+# backend Loki/Tempo, Paddle sandbox, GitHub gh), pulling each credential from
+# Infisical /qa at runtime. Run on the box with `bash {{ qa_workdir }}/canary.sh`.
+- name: Deliver the QA canary script
+  ansible.builtin.copy:
+    src: qa-canary.sh
+    dest: "{{ qa_workdir }}/canary.sh"
+    mode: "0755"
+
+- name: Record the provisioned tool versions
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      { echo "node:      $(node --version)";
+        echo "claude:    $(claude --version 2>/dev/null | head -1)";
+        echo "codex:     $(codex --version 2>/dev/null | head -1)";
+        echo "opencode:  $(opencode --version 2>/dev/null | head -1)";
+        echo "playwright:$(cd {{ qa_workdir }} && npx --yes playwright --version 2>/dev/null)";
+        echo "infisical: $(infisical --version 2>/dev/null | head -1)";
+        echo "gh:        $(gh --version 2>/dev/null | head -1)";
+        echo "linear:    $(linear --version 2>/dev/null | head -1)"; }
+    executable: /bin/bash
+  register: qa_versions
+  changed_when: false
+
+- name: Show the provisioned tool versions
+  ansible.builtin.debug:
+    msg: "{{ qa_versions.stdout_lines }}"
