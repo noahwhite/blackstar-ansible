@@ -35,3 +35,10 @@ qa_playwright_cache: /root/.cache/ms-playwright
 # officina provisions the identity); this role only installs the CLI + points
 # the box's Infisical config at the right host.
 qa_infisical_host: "https://scarif.officina.pub"
+
+# Linear CLI (schpet/linear-cli) - the harness reads Linear read-only via a
+# token-efficient CLI instead of the verbose MCP. Standalone binary (no Deno/npm
+# runtime), pinned + checksum-verified. Bump both together on upgrade; the sha256
+# is the linux x86_64 asset's, from the release's .sha256.
+qa_linear_version: "2.6.0"
+qa_linear_sha256: "bbcb9d365308bc3728a1ec9913ad1880f88c0ce68767383297e348c057f35b8d"
