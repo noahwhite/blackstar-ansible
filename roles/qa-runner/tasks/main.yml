@@ -97,6 +97,64 @@
         state: present
         update_cache: true
 
+# --- GitHub CLI (gh) --------------------------------------------------------
+# The harness reads GitHub read-only. `gh` is far more token-efficient than the
+# GitHub MCP: `gh api ... --jq '<fields>'` returns exactly the requested fields
+# rather than a verbose tool result. It authenticates from the GH_TOKEN env var
+# at runtime (a READ-ONLY fine-grained PAT delivered from Infisical /qa as
+# QA_GH_TOKEN) - no `gh auth login`, no token on disk. Read-only is enforced by
+# the PAT scope, so any write 403s at GitHub regardless of the command.
+- name: Check for the GitHub CLI
+  ansible.builtin.command: gh --version
+  register: qa_gh_check
+  changed_when: false
+  failed_when: false
+
+- name: Install the GitHub CLI from its apt repository
+  when: qa_gh_check.rc != 0
+  block:
+    - name: Ensure the apt keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add the GitHub CLI apt signing key
+      ansible.builtin.get_url:
+        url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+        dest: /etc/apt/keyrings/githubcli-archive-keyring.gpg
+        mode: "0644"
+
+    - name: Detect the dpkg architecture
+      ansible.builtin.command: dpkg --print-architecture
+      register: qa_dpkg_arch
+      changed_when: false
+
+    - name: Add the GitHub CLI apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ qa_dpkg_arch.stdout }}
+          signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg]
+          https://cli.github.com/packages stable main
+        filename: github-cli
+        state: present
+
+    - name: Install gh
+      ansible.builtin.apt:
+        name: gh
+        state: present
+        update_cache: true
+
+# --- QA canary --------------------------------------------------------------
+# The reproducible smoke test: one read-only probe per lane (portal, console,
+# backend Loki/Tempo, Paddle sandbox, GitHub gh), pulling each credential from
+# Infisical /qa at runtime. Run on the box with `bash {{ qa_workdir }}/canary.sh`.
+- name: Deliver the QA canary script
+  ansible.builtin.copy:
+    src: qa-canary.sh
+    dest: "{{ qa_workdir }}/canary.sh"
+    mode: "0755"
+
 - name: Record the provisioned tool versions
   ansible.builtin.shell:
     cmd: >-
@@ -106,7 +164,8 @@
         echo "codex:     $(codex --version 2>/dev/null | head -1)";
         echo "opencode:  $(opencode --version 2>/dev/null | head -1)";
         echo "playwright:$(cd {{ qa_workdir }} && npx --yes playwright --version 2>/dev/null)";
-        echo "infisical: $(infisical --version 2>/dev/null | head -1)"; }
+        echo "infisical: $(infisical --version 2>/dev/null | head -1)";
+        echo "gh:        $(gh --version 2>/dev/null | head -1)"; }
     executable: /bin/bash
   register: qa_versions
   changed_when: false
