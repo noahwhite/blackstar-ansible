@@ -79,10 +79,10 @@ fi
 echo "GITHUB   read=$ghread  write=$ghwrite"
 
 # --- Linear (linear CLI, read-only) ---------------------------------------
-# `linear` reads LINEAR_AUTH_TOKEN from the env; the token is a READ-ONLY Linear
+# `linear` reads LINEAR_API_KEY from the env; the token is a READ-ONLY Linear
 # API key from /qa. Read this very story (OFF-856) as the probe. The key's scope
 # is what keeps it read-only.
-export LINEAR_AUTH_TOKEN=$(g QA_LINEAR_API_KEY)
+export LINEAR_API_KEY=$(g QA_LINEAR_API_KEY)
 if linear issue view OFF-856 >/tmp/qa_lin.txt 2>/dev/null && grep -qi 'OFF-856' /tmp/qa_lin.txt; then
   linread="ok"
 else

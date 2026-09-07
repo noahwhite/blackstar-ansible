@@ -150,7 +150,7 @@
 # The harness reads Linear read-only via `linear` - token-efficient like gh
 # (`linear issue view <ID>` returns just the issue vs the verbose Linear MCP).
 # Standalone binary (no Deno/npm runtime), pinned + checksum-verified. It
-# authenticates from LINEAR_AUTH_TOKEN at runtime (a READ-ONLY Linear API key
+# authenticates from LINEAR_API_KEY at runtime (a READ-ONLY Linear API key
 # delivered from Infisical /qa as QA_LINEAR_API_KEY) - no `linear auth login`,
 # no token on disk; read-only is the key's scope.
 - name: Check the installed linear-cli version
