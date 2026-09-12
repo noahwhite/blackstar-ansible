@@ -53,8 +53,11 @@ runner_vm_sshkeys: []
 # one play run enrols both VMs, and a still-valid BWS key re-enrols a rebuilt or
 # long-powered-off runner. Ephemeral nodes persist across normal reboots
 # (tailscaled keeps its node key); removal only fires after a sustained offline
-# window. REQUIRED via --extra-vars; asserted non-empty; templated into the
-# (uncommitted, node-local) snippet at run time. NEVER commit a value here.
+# window. OFF-904: after such a reap the node is gone server-side, so the guest's
+# tailscale-auth.service re-runs `tailscale up` with this key on EVERY boot to
+# self-heal — which is why the key must stay valid (it is reused, not per-run).
+# REQUIRED via --extra-vars; asserted non-empty; templated into the (uncommitted,
+# node-local) snippet at run time. NEVER commit a value here.
 officina_ci_tailscale_authkey: ""
 
 # --- The runner VMs ----------------------------------------------------------
