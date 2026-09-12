@@ -9,7 +9,8 @@
       officina_ci_tailscale_authkey is empty. Supply the reusable, ephemeral
       tag:officina-ci auth key from officina BWS (the same key the Hetzner
       runners use, rotated on Tailscale's 90-day cycle) via --extra-vars.
-      Never commit it.
+      OFF-904: the guest re-runs `tailscale up` with this key on every boot to
+      recover from a tailnet reap, so the key must stay valid. Never commit it.
     quiet: true
 
 # =============================================================================

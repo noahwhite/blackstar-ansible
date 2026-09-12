@@ -32,12 +32,45 @@ packages:
   - jq
   - curl
 
+write_files:
+  # OFF-904: (re-)authenticate Tailscale on EVERY boot, not just first boot.
+  # The officina tag:officina-ci key is reusable + ephemeral, so an ephemeral
+  # node that stays offline past the tailnet reap window is deleted server-side;
+  # after a reboot tailscaled would otherwise sit in NeedsLogin and the VM would
+  # be off the tailnet, breaking every `docker run --network host` step that
+  # resolves scarif.<tailnet>. This oneshot re-runs `tailscale up` each boot so a
+  # reaped node self-heals. `tailscale up` is idempotent: a no-op reconnect for a
+  # live node, a re-registration for a reaped one. Modeled on the officina host
+  # modules' tailscale-auth.service (opentofu/modules/admin-host/templates/
+  # host.bu.tftpl) but deliberately WITHOUT their first-boot-only
+  # `ConditionPathExists=!/var/lib/tailscale/tailscaled.state` guard, which is
+  # exactly what stopped the re-auth from firing after the reap. 0600 because the
+  # unit embeds the auth key (the snippet is already node-local and no_log).
+  - path: /etc/systemd/system/tailscale-auth.service
+    permissions: "0600"
+    content: |
+      [Unit]
+      Description=(Re-)authenticate Tailscale on every boot (OFF-904)
+      After=tailscaled.service network-online.target
+      Wants=tailscaled.service network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/tailscale up --authkey="{{ officina_ci_tailscale_authkey }}" --ssh --hostname="{{ item.name }}"
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+
 runcmd:
   - systemctl enable --now qemu-guest-agent
   # Join the officina tailnet. The key is minted pre-tagged (tag:officina-ci),
-  # so do NOT also pass --advertise-tags.
+  # so do NOT also pass --advertise-tags. OFF-904: the `tailscale up` invocation
+  # itself lives in tailscale-auth.service (written above) so it re-runs on every
+  # boot; here we install tailscaled and enable+start that unit for first boot.
   - curl -fsSL https://tailscale.com/install.sh | sh
-  - tailscale up --authkey="{{ officina_ci_tailscale_authkey }}" --ssh --hostname="{{ item.name }}"
+  - systemctl daemon-reload
+  - systemctl enable --now tailscale-auth.service
   # Bind the stock sshd to the assigned tailnet address only; primary management
   # is tailscale ssh (which runs independently of sshd), matching the Hetzner
   # runners. If tailscale has no address yet, leave sshd on its defaults.
