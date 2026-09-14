@@ -60,6 +60,13 @@ runner_vm_sshkeys: []
 # node-local) snippet at run time. NEVER commit a value here.
 officina_ci_tailscale_authkey: ""
 
+# The tailnet tag the key is minted for. tailscale-auth.service must pass this as
+# --advertise-tags on every re-auth: once a node has advertised a tag, a bare
+# `tailscale up` (no --advertise-tags) is refused with "changing settings ...
+# requires mentioning all non-default flags" and exits non-zero, so a reaped node
+# would fail to self-heal on reboot. Passing the tag makes the re-auth idempotent.
+officina_ci_tailscale_tag: "tag:officina-ci"
+
 # --- The runner VMs ----------------------------------------------------------
 # One GitHub runner per VM (officina sets RUNNER_COUNT=1) — deliberately avoids
 # the concurrent-Testcontainers OOM that hung the old shared Hetzner box.

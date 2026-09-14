@@ -60,6 +60,19 @@ class ReauthUnitTest(unittest.TestCase):
             "the unit must run `tailscale up` with the officina auth key",
         )
 
+    def test_unit_reauths_with_advertise_tags(self):
+        # Once a node has advertised its tag, a bare `tailscale up` (no
+        # --advertise-tags) is refused ("changing settings ... requires
+        # mentioning all non-default flags") and exits non-zero, so the re-auth
+        # must re-pass the tag or a reaped node fails to self-heal on reboot.
+        self.assertRegex(
+            self.text,
+            r"ExecStart=/usr/bin/tailscale up[^\n]*"
+            r"--advertise-tags=[^\n]*officina_ci_tailscale_tag",
+            "the re-auth unit must pass --advertise-tags so `tailscale up` is "
+            "idempotent on an already-tagged node (else the reap self-heal fails)",
+        )
+
     def test_unit_is_not_first_boot_guarded(self):
         # The whole point of OFF-904: the unit must re-run on every boot, so it
         # must NOT carry the host modules' first-boot-only guard.
