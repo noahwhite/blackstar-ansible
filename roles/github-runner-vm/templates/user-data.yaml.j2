@@ -40,7 +40,11 @@ write_files:
   # be off the tailnet, breaking every `docker run --network host` step that
   # resolves scarif.<tailnet>. This oneshot re-runs `tailscale up` each boot so a
   # reaped node self-heals. `tailscale up` is idempotent: a no-op reconnect for a
-  # live node, a re-registration for a reaped one. Modeled on the officina host
+  # live node, a re-registration for a reaped one - but only when --advertise-tags
+  # is passed: once the node has advertised tag:officina-ci, a bare `tailscale up`
+  # is refused ("changing settings ... requires mentioning all non-default flags")
+  # and exits non-zero, so re-passing the tag is what keeps the re-auth idempotent.
+  # Modeled on the officina host
   # modules' tailscale-auth.service (opentofu/modules/admin-host/templates/
   # host.bu.tftpl) but deliberately WITHOUT their first-boot-only
   # `ConditionPathExists=!/var/lib/tailscale/tailscaled.state` guard, which is
@@ -56,7 +60,7 @@ write_files:
 
       [Service]
       Type=oneshot
-      ExecStart=/usr/bin/tailscale up --authkey="{{ officina_ci_tailscale_authkey }}" --ssh --hostname="{{ item.name }}"
+      ExecStart=/usr/bin/tailscale up --authkey="{{ officina_ci_tailscale_authkey }}" --ssh --hostname="{{ item.name }}" --advertise-tags="{{ officina_ci_tailscale_tag }}"
       RemainAfterExit=yes
 
       [Install]
