@@ -16,8 +16,9 @@ set -uo pipefail
 : "${QA_INFISICAL_ENV_FILE:=/etc/officina-qa/infisical.env}"
 set -a; . "$QA_INFISICAL_ENV_FILE"; set +a
 
-# Session cookie and response bodies live in a private dir, removed on exit.
-W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
+# Response bodies live in a private dir, removed on exit.
+W=$(mktemp -d) || { echo "QA CANARY: mktemp failed" >&2; exit 1; }
+trap 'rm -rf "$W"' EXIT
 
 export INFISICAL_API_URL="$QA_INFISICAL_HOST/api"
 export INFISICAL_TOKEN
@@ -34,10 +35,19 @@ bearer() { printf 'Authorization: Bearer %s\n' "$1"; }
 echo "QA CANARY $(date -u +%FT%TZ)  egress=$(curl -s https://api.ipify.org)"
 
 # --- Portal ---------------------------------------------------------------
-pc=$(E=$(g QA_TEST_CUSTOMER_EMAIL) P=$(g QA_TEST_CUSTOMER_PASSWORD) \
-  jq -nc '{email:env.E,password:env.P}' | curl -s -o /dev/null -w "%{http_code}" -c "$W/cj.txt" \
-  -H "Content-Type: application/json" --data-binary @- "https://my.dev-officina.work/api/auth/login")
-grep -q officina_session "$W/cj.txt" && ck=yes || ck=no
+# The session cookie is checked in the response headers, held in memory only.
+E=$(g QA_TEST_CUSTOMER_EMAIL); P=$(g QA_TEST_CUSTOMER_PASSWORD); ck=no
+if [ -n "$E" ] && [ -n "$P" ]; then
+  hdrs=$(E="$E" P="$P" jq -nc '{email:env.E,password:env.P}' | curl -s -D - -o /dev/null \
+    -w '\nHTTP_CODE=%{http_code}' -H "Content-Type: application/json" --data-binary @- \
+    "https://my.dev-officina.work/api/auth/login")
+  pc=${hdrs##*HTTP_CODE=}
+  printf '%s\n' "$hdrs" | grep -qi '^set-cookie: officina_session=' && ck=yes
+  unset hdrs
+else
+  pc=MISSING_CREDS
+fi
+unset E P
 echo "PORTAL   login=$pc  officina_session_cookie=$ck"
 
 # --- Console (read 200 / mutation 403) ------------------------------------

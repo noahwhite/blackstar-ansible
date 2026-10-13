@@ -43,7 +43,7 @@ class QaCanaryNoArgvCredentials(unittest.TestCase):
 
     def test_no_variable_in_inline_curl_header_or_body(self):
         self.assert_absent(
-            r"(-H|--header|-d|--data(-binary|-raw)?|-u|--user)\s+\"[^\"]*\$",
+            r"(-H|--header|-d|--data(-binary|-raw)?|-u|--user|--oauth2-bearer)(\s+|=)\"[^\"]*\$",
             "feed secret headers and bodies via -H @<(printf ...) or stdin",
         )
 
