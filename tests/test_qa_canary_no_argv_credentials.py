@@ -68,6 +68,13 @@ def curl_segments(line):
         yield line[m.end():end]
 
 
+def allowed(tok):
+    """An allowed expansion: an exact allowed value, or an allowed prefix with no further expansion."""
+    if tok in ALLOWED_VALUES:
+        return True
+    return any(tok.startswith(p) and "$" not in tok[len(p):] for p in ALLOWED_PREFIXES)
+
+
 def procsubs(segment):
     """Split out each @<(...) body; return the bodies and the segment with each replaced by @PROCSUB."""
     bodies, out, k = [], [], 0
@@ -106,7 +113,7 @@ def curl_violations(text):
                             if ch == "c":
                                 hits.append(f"cookie jar: {segment.strip()}")
                             break
-                if "$" in tok and tok not in ALLOWED_VALUES and not tok.startswith(ALLOWED_PREFIXES):
+                if "$" in tok and not allowed(tok):
                     hits.append(f"expanded argument: {tok}")
     return hits
 
@@ -144,6 +151,8 @@ class CurlGuard(unittest.TestCase):
         'curl -s -H @<(env printf "Authorization: Bearer %s\\n" "$TOK") https://x',
         'curl -s -H @<(/usr/bin/printf "X: %s" "$TOK") https://x',
         'curl -s -H @<(cfh; env printf "%s" "$TOK") https://x',
+        'curl -s "$GURL/api?token=$TOK"',
+        'curl -s -o "$W/$TOK" https://x',
     ]
     MUST_PASS = [
         'curl -s -H @<(bearer "$SA") "$GURL/api"',
