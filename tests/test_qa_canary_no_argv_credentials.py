@@ -43,9 +43,12 @@ class QaCanaryNoArgvCredentials(unittest.TestCase):
 
     def test_no_variable_in_inline_curl_header_or_body(self):
         self.assert_absent(
-            r"(-H|--header|-d|--data(-binary|-raw)?|-u|--user|--oauth2-bearer)(\s+|=)\"[^\"]*\$",
+            r"(-H|--header|-d|--data(-binary|-raw|-ascii)?|--json|-u|--user|--proxy-user|--oauth2-bearer|-b|--cookie)(\s+|=)\S*\$",
             "feed secret headers and bodies via -H @<(printf ...) or stdin",
         )
+
+    def test_no_cookie_jar_on_disk(self):
+        self.assert_absent(r"\s(-c|--cookie-jar)\s", "check Set-Cookie in memory, not in a jar file")
 
     def test_no_header_array_expansion(self):
         self.assert_absent(r"\"\$\{H\[@\]\}\"", "a header array expands onto argv")

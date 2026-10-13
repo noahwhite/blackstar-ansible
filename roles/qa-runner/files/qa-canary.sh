@@ -42,7 +42,9 @@ if [ -n "$E" ] && [ -n "$P" ]; then
     -w '\nHTTP_CODE=%{http_code}' -H "Content-Type: application/json" --data-binary @- \
     "https://my.dev-officina.work/api/auth/login")
   pc=${hdrs##*HTTP_CODE=}
-  printf '%s\n' "$hdrs" | grep -qi '^set-cookie: officina_session=' && ck=yes
+  # Matched in bash: a pipe into grep -q can SIGPIPE under pipefail, and a
+  # cleared cookie (officina_session=;) must not count.
+  [[ ${hdrs,,} =~ $'\n'set-cookie:[[:space:]]*officina_session=[^\;[:space:]] ]] && ck=yes
   unset hdrs
 else
   pc=MISSING_CREDS
