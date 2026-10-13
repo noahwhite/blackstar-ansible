@@ -4,59 +4,83 @@
 # a credential pulled from Infisical /qa at runtime. Read-only throughout.
 #
 # Delivered to /opt/qa/canary.sh by the qa-runner Ansible role. Run: bash canary.sh
+#
+# No credential ever reaches a command line: any user on the box can read argv
+# through ps or /proc/<pid>/cmdline. Credentials travel in env vars the tools
+# read (infisical, gh, linear), as curl headers read from a bash process
+# substitution that only the printf builtin writes (-H @<(...)), and as JSON
+# built by jq from env.* and piped on stdin. Probes copied from this script
+# inherit the pattern.
 set -uo pipefail
 
 : "${QA_INFISICAL_ENV_FILE:=/etc/officina-qa/infisical.env}"
 set -a; . "$QA_INFISICAL_ENV_FILE"; set +a
 
-TOKEN=$(infisical login --method=universal-auth \
-  --client-id="$QA_INFISICAL_CLIENT_ID" --client-secret="$QA_INFISICAL_CLIENT_SECRET" \
-  --domain="$QA_INFISICAL_HOST/api" --plain --silent 2>/dev/null)
+# Response bodies live in a private dir, removed on exit.
+W=$(mktemp -d) || { echo "QA CANARY: mktemp failed" >&2; exit 1; }
+trap 'rm -rf "$W"' EXIT
+
+export INFISICAL_API_URL="$QA_INFISICAL_HOST/api"
+export INFISICAL_TOKEN
+INFISICAL_TOKEN=$(INFISICAL_UNIVERSAL_AUTH_CLIENT_ID="$QA_INFISICAL_CLIENT_ID" \
+  INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET="$QA_INFISICAL_CLIENT_SECRET" \
+  infisical login --method=universal-auth --plain --silent 2>/dev/null)
+unset QA_INFISICAL_CLIENT_SECRET
 g() {
   infisical secrets get "$1" --projectId="$QA_INFISICAL_PROJECT_ID" \
-    --env="$QA_INFISICAL_ENV" --path="$QA_INFISICAL_PATH" \
-    --domain="$QA_INFISICAL_HOST/api" --token="$TOKEN" --plain --silent 2>/dev/null
+    --env="$QA_INFISICAL_ENV" --path="$QA_INFISICAL_PATH" --plain --silent 2>/dev/null
 }
+bearer() { printf 'Authorization: Bearer %s\n' "$1"; }
 
 echo "QA CANARY $(date -u +%FT%TZ)  egress=$(curl -s https://api.ipify.org)"
 
 # --- Portal ---------------------------------------------------------------
-E=$(g QA_TEST_CUSTOMER_EMAIL); P=$(g QA_TEST_CUSTOMER_PASSWORD)
-body=$(jq -nc --arg e "$E" --arg p "$P" '{email:$e,password:$p}')
-pc=$(curl -s -o /dev/null -w "%{http_code}" -c /tmp/qa_cj.txt \
-  -H "Content-Type: application/json" -d "$body" "https://my.dev-officina.work/api/auth/login")
-grep -q officina_session /tmp/qa_cj.txt && ck=yes || ck=no
+# The session cookie is checked in the response headers, held in memory only.
+E=$(g QA_TEST_CUSTOMER_EMAIL); P=$(g QA_TEST_CUSTOMER_PASSWORD); ck=no
+if [ -n "$E" ] && [ -n "$P" ]; then
+  hdrs=$(E="$E" P="$P" jq -nc '{email:env.E,password:env.P}' | curl -s -D - -o /dev/null \
+    -w '\nHTTP_CODE=%{http_code}' -H "Content-Type: application/json" --data-binary @- \
+    "https://my.dev-officina.work/api/auth/login")
+  pc=${hdrs##*HTTP_CODE=}
+  # Matched in bash: a pipe into grep -q can SIGPIPE under pipefail. Only a
+  # successful login counts, and a cleared cookie (officina_session=;) never does.
+  [[ $pc == 2[0-9][0-9] && ${hdrs,,} =~ $'\n'set-cookie:[[:space:]]*officina_session=[^\;[:space:]] ]] && ck=yes
+  unset hdrs
+else
+  pc=MISSING_CREDS
+fi
+unset E P
 echo "PORTAL   login=$pc  officina_session_cookie=$ck"
 
 # --- Console (read 200 / mutation 403) ------------------------------------
 CID=$(g QA_OPERATOR_CF_ACCESS_CLIENT_ID); CSEC=$(g QA_OPERATOR_CF_ACCESS_CLIENT_SECRET)
-H=(-H "CF-Access-Client-Id: $CID" -H "CF-Access-Client-Secret: $CSEC")
-me=$(curl -s -o /tmp/qa_me.json -w "%{http_code}" "${H[@]}" "https://admin.dev-officina.work/api/admin/me")
-kind=$(jq -r .kind /tmp/qa_me.json 2>/dev/null); role=$(jq -r .role /tmp/qa_me.json 2>/dev/null)
-ops=$(curl -s -o /dev/null -w "%{http_code}" "${H[@]}" "https://admin.dev-officina.work/api/admin/operators")
-mut=$(curl -s -o /dev/null -w "%{http_code}" "${H[@]}" -X POST -H "Content-Type: application/json" \
+cfh() { printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' "$CID" "$CSEC"; }
+me=$(curl -s -o "$W/me.json" -w "%{http_code}" -H @<(cfh) "https://admin.dev-officina.work/api/admin/me")
+kind=$(jq -r .kind "$W/me.json" 2>/dev/null); role=$(jq -r .role "$W/me.json" 2>/dev/null)
+ops=$(curl -s -o /dev/null -w "%{http_code}" -H @<(cfh) "https://admin.dev-officina.work/api/admin/operators")
+mut=$(curl -s -o /dev/null -w "%{http_code}" -H @<(cfh) -X POST -H "Content-Type: application/json" \
   -d '{"email":"canary@example.com","role":"read_only"}' "https://admin.dev-officina.work/api/admin/operators")
 echo "CONSOLE  me=$me(kind=$kind,role=$role)  operators=$ops  mutation=$mut"
 
 # --- Backend (Loki/Tempo) -------------------------------------------------
 SA=$(g QA_GRAFANA_SA_TOKEN); GURL=$(g QA_GRAFANA_URL); GURL="${GURL:-https://grafana343c.grafana.net}"
-ll=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $SA" \
+ll=$(curl -s -o /dev/null -w "%{http_code}" -H @<(bearer "$SA") \
   "$GURL/api/datasources/proxy/uid/grafanacloud-logs/loki/api/v1/labels")
 END=$(date +%s)000000000; START=$(( $(date +%s) - 3600 ))000000000
-qc=$(curl -s -o /tmp/qa_q.json -w "%{http_code}" -G -H "Authorization: Bearer $SA" \
+qc=$(curl -s -o "$W/q.json" -w "%{http_code}" -G -H @<(bearer "$SA") \
   --data-urlencode "query=count_over_time({environment=\"dev\"}[5m])" \
   --data-urlencode "start=$START" --data-urlencode "end=$END" \
   "$GURL/api/datasources/proxy/uid/grafanacloud-logs/loki/api/v1/query_range")
-series=$(jq '.data.result|length' /tmp/qa_q.json 2>/dev/null)
-te=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $SA" \
+series=$(jq '.data.result|length' "$W/q.json" 2>/dev/null)
+te=$(curl -s -o /dev/null -w "%{http_code}" -H @<(bearer "$SA") \
   "$GURL/api/datasources/proxy/uid/grafanacloud-traces/api/echo")
 echo "BACKEND  loki_labels=$ll  loki_dev_query=$qc(series=$series)  tempo_echo=$te"
 
 # --- Billing (Paddle sandbox) ---------------------------------------------
 PK=$(g QA_PADDLE_SANDBOX_API_KEY)
-pd=$(curl -s -o /tmp/qa_pd.json -w "%{http_code}" -H "Authorization: Bearer $PK" \
+pd=$(curl -s -o "$W/pd.json" -w "%{http_code}" -H @<(bearer "$PK") \
   "https://sandbox-api.paddle.com/event-types")
-evt=$(jq '.data|length' /tmp/qa_pd.json 2>/dev/null)
+evt=$(jq '.data|length' "$W/pd.json" 2>/dev/null)
 echo "PADDLE   event_types=$pd(count=$evt)"
 
 # --- GitHub (gh CLI, read-only) -------------------------------------------
@@ -83,11 +107,9 @@ echo "GITHUB   read=$ghread  write=$ghwrite"
 # API key from /qa. Read this very story (OFF-856) as the probe. The key's scope
 # is what keeps it read-only.
 export LINEAR_API_KEY=$(g QA_LINEAR_API_KEY)
-if linear issue view OFF-856 >/tmp/qa_lin.txt 2>/dev/null && grep -qi 'OFF-856' /tmp/qa_lin.txt; then
+if linear issue view OFF-856 >"$W/lin.txt" 2>/dev/null && grep -qi 'OFF-856' "$W/lin.txt"; then
   linread="ok"
 else
   linread="FAIL"
 fi
 echo "LINEAR   read=$linread"
-
-rm -f /tmp/qa_cj.txt /tmp/qa_me.json /tmp/qa_q.json /tmp/qa_pd.json /tmp/qa_lin.txt
