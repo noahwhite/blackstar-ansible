@@ -18,9 +18,11 @@ runner_vm_image_path: "/root/{{ runner_vm_image_url | basename }}"
 # Guest CPU model. QEMU's default (kvm64) is an x86-64-v1 baseline that lacks
 # SSE4.2/POPCNT, so el9 glibc (2.34+) container images — e.g. mysql:8.0 under
 # Testcontainers — die with "CPU does not support x86-64-v2". `host` passes the
-# physical CPU through (best perf) and is safe here: the runners are pinned to
-# the identical ed800g9 nodes and never migrated. Use `x86-64-v2-AES` or
-# `x86-64-v3` instead if these ever need cross-node live migration.
+# physical CPU through (best perf) and is safe here: each runner is pinned to
+# its node and never live-migrated. The local-storage runners on the m75q are
+# migrated once, offline, before first boot, so they start on their own CPU.
+# Use `x86-64-v2-AES` or `x86-64-v3` instead if these ever need cross-node live
+# migration (the cluster mixes Intel ed800g9 and AMD m75q CPUs).
 runner_vm_cpu_type: host
 
 # --- Storage / network -------------------------------------------------------
