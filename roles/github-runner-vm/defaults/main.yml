@@ -18,9 +18,11 @@ runner_vm_image_path: "/root/{{ runner_vm_image_url | basename }}"
 # Guest CPU model. QEMU's default (kvm64) is an x86-64-v1 baseline that lacks
 # SSE4.2/POPCNT, so el9 glibc (2.34+) container images — e.g. mysql:8.0 under
 # Testcontainers — die with "CPU does not support x86-64-v2". `host` passes the
-# physical CPU through (best perf) and is safe here: the runners are pinned to
-# the identical ed800g9 nodes and never migrated. Use `x86-64-v2-AES` or
-# `x86-64-v3` instead if these ever need cross-node live migration.
+# physical CPU through (best perf) and is safe here: each runner is pinned to
+# its node and never live-migrated. The local-storage runners on the m75q are
+# migrated once, offline, before first boot, so they start on their own CPU.
+# Use `x86-64-v2-AES` or `x86-64-v3` instead if these ever need cross-node live
+# migration (the cluster mixes Intel ed800g9 and AMD m75q CPUs).
 runner_vm_cpu_type: host
 
 # --- Storage / network -------------------------------------------------------
@@ -83,9 +85,12 @@ runner_vms:
   # 5650GE, 12t) are the strongest m75q.
   - {vmid: 8004, name: officina-runner-4, node: pve01.home.arpa, cores: 4, memory: 8192, disk: 80, storage: local-zfs}
   - {vmid: 8005, name: officina-runner-5, node: pve04.home.arpa, cores: 4, memory: 8192, disk: 80, storage: local-zfs}
-  # Automated-QA runner (officina OFF-856). Same VM birth as the CI runners;
-  # pve02/pve03 are the two m75q with no runner, so it lands on pve03 (local-zfs,
-  # no Ceph). It shares the home FiOS egress 173.48.235.97 (already WAF-allowlisted
+  # pve02 (8t) + pve03 (12t) complete the m75q set. 4 vCPU / 8 GB fits both
+  # beside their other guests (31 GB each; pve03 also hosts the QA runner below).
+  - {vmid: 8007, name: officina-runner-6, node: pve02.home.arpa, cores: 4, memory: 8192, disk: 80, storage: local-zfs}
+  - {vmid: 8008, name: officina-runner-7, node: pve03.home.arpa, cores: 4, memory: 8192, disk: 80, storage: local-zfs}
+  # Automated-QA runner (officina OFF-856). Same VM birth as the CI runners, on
+  # pve03 (local-zfs, no Ceph). It shares the home FiOS egress 173.48.235.97 (already WAF-allowlisted
   # on dev). At enrollment it must carry a distinct `qa` runner label (officina-cicd
   # provision-runner.sh) so QA verification jobs target it and it never picks up CI
   # build jobs; the agent CLIs + Playwright/Chromium are installed on top.
