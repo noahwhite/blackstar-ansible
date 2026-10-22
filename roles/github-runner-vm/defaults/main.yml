@@ -83,9 +83,12 @@ runner_vms:
   # 5650GE, 12t) are the strongest m75q.
   - {vmid: 8004, name: officina-runner-4, node: pve01.home.arpa, cores: 4, memory: 8192, disk: 80, storage: local-zfs}
   - {vmid: 8005, name: officina-runner-5, node: pve04.home.arpa, cores: 4, memory: 8192, disk: 80, storage: local-zfs}
-  # Automated-QA runner (officina OFF-856). Same VM birth as the CI runners;
-  # pve02/pve03 are the two m75q with no runner, so it lands on pve03 (local-zfs,
-  # no Ceph). It shares the home FiOS egress 173.48.235.97 (already WAF-allowlisted
+  # pve02 (8t) + pve03 (12t) complete the m75q set. 4 vCPU / 8 GB fits both
+  # beside their other guests (31 GB each; pve03 also hosts the QA runner below).
+  - {vmid: 8007, name: officina-runner-6, node: pve02.home.arpa, cores: 4, memory: 8192, disk: 80, storage: local-zfs}
+  - {vmid: 8008, name: officina-runner-7, node: pve03.home.arpa, cores: 4, memory: 8192, disk: 80, storage: local-zfs}
+  # Automated-QA runner (officina OFF-856). Same VM birth as the CI runners, on
+  # pve03 (local-zfs, no Ceph). It shares the home FiOS egress 173.48.235.97 (already WAF-allowlisted
   # on dev). At enrollment it must carry a distinct `qa` runner label (officina-cicd
   # provision-runner.sh) so QA verification jobs target it and it never picks up CI
   # build jobs; the agent CLIs + Playwright/Chromium are installed on top.
