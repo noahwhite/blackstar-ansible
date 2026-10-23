@@ -20,7 +20,7 @@
   register: node_root_pubkey
 
 - name: Authorize this node's root key on the cluster master
-  ansible.builtin.authorized_key:
+  ansible.posix.authorized_key:
     user: root
     state: present
     key: "{{ node_root_pubkey['content'] | b64decode | trim }}"
