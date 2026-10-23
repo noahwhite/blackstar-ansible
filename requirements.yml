@@ -5,3 +5,5 @@ collections:
     version: ">=2.18.0"
   - name: ansible.netcommon
     version: ">=7.1.0"
+  - name: ansible.posix
+    version: ">=2.0.0"
