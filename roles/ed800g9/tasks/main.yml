@@ -110,3 +110,86 @@
   notify: Apply pcie runtime-pm rule
   tags:
     - hardening
+
+# Third attempt at the Thunderbolt NIC AER, after ASPM and PCIe runtime PM both
+# FAILED. Do not read this as "another power tweak" — it targets a different
+# layer than either of those, which is precisely why they could not have worked.
+#
+# What the failure actually is (pve06, 2026-08-20 09:30:30 EDT):
+#   pcieport 0000:03:00.0: AER: PCIe Bus Error: severity=Uncorrectable (Fatal),
+#                               type=Inaccessible
+#   thunderbolt/atlantic/xhci_hcd: AER: can't recover (no error_detected callback)
+#   pcieport 0000:00:1d.0: AER: device recovery failed
+# `type=Inaccessible` is a LINK DROP / surprise-removal, not data corruption —
+# no Malformed TLP, no Completion Timeout. The device simply stops answering,
+# and because those three drivers implement no error_detected callback the
+# kernel cannot re-establish it: dead until reboot.
+#
+# It is fleet-wide, not one bad node: pve05 2 fatals (Aug 11, Aug 13),
+# pve06 2 (Aug 18, Aug 20), pve07 1 (Aug 13) — same device, same signature,
+# identical kernel / TB NVM 39.83 / atlantic fw 3.1.121 / BIOS U21 02.21.00.
+#
+# Why C-states: the failure correlates with IDLE (link throughput at the PD #29
+# fatal was 0.22 MB/s), and pve06 logged C10 usage=714927 in under an hour of
+# uptime. C10 power-gates SoC logic including the PCIe/Thunderbolt path. ASPM
+# governs link states and runtime PM governs device D-states; NEITHER affects
+# package idle states, so both were addressing the wrong layer.
+#
+# Persisted as a boot-time /sys write, NOT a kernel cmdline arg
+# (intel_idle.max_cstate=), for the same Secure Boot reason as the ASPM fix
+# above. Runtime effect requires no reboot.
+#
+# Trade-off: costs roughly 10-20 W idle per node and some heat. Deliberate —
+# these are always-on cluster nodes whose storage network keeps dropping.
+#
+# ⚠️ HYPOTHESIS, not a proven fix — the third one. Success criterion is NO fatal
+# AER on any node for 14 consecutive days. If one recurs with C8/C10 disabled,
+# record it on OFF-633 and mark this falsified; do not quietly try a fourth
+# variant of the same idea. See OFF-735.
+- name: Deploy deep C-state limiter (Thunderbolt NIC AER mitigation)
+  ansible.builtin.copy:
+    src: limit-deep-cstates.sh
+    dest: /usr/local/sbin/limit-deep-cstates.sh
+    owner: root
+    group: root
+    mode: "0755"
+  tags:
+    - hardening
+
+- name: Deploy deep C-state limiter unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/limit-deep-cstates.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (ed800g9 role) — do not edit.
+      [Unit]
+      Description=Limit deep CPU package C-states (Thunderbolt NIC AER mitigation)
+      ConditionPathExists=/sys/devices/system/cpu/cpu0/cpuidle
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/sbin/limit-deep-cstates.sh C8 C10
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd for cstate limiter
+  tags:
+    - hardening
+
+- name: Flush handlers so the unit is loaded before it is enabled
+  ansible.builtin.meta: flush_handlers
+
+# Skipped under --check: check mode never writes the unit file above, so systemd
+# would fail with "Could not find the requested service" and mask any real
+# finding in the dry run.
+- name: Enable and start the deep C-state limiter
+  ansible.builtin.systemd:
+    name: limit-deep-cstates.service
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+  tags:
+    - hardening
