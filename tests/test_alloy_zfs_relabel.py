@@ -33,6 +33,7 @@ KEPT_ZFS = {
     "node_zfs_arc_misses",
     "node_zfs_zpool_state",
 }
+NODES = [f"pve0{i}" for i in range(1, 8)]
 
 
 def render():
@@ -130,15 +131,38 @@ class FriendlyNamesZfsTest(unittest.TestCase):
         }
         self.assertEqual(survivors, KEPT_ZFS)
 
-    def test_kept_zfs_series_keep_their_exact_label_set(self):
-        samples = [series(name) for name in sorted(KEPT_ZFS - {"node_zfs_zpool_state"})]
-        samples += [
-            series("node_zfs_zpool_state", state=state, zpool="rpool")
-            for state in ("degraded", "faulted", "offline", "online", "removed", "suspended", "unavail")
-        ]
-        for labels in samples:
-            with self.subTest(labels=labels):
-                self.assertEqual(apply(self.rules, labels), labels)
+    def test_unmeasured_zfs_names_are_dropped_too(self):
+        # The drop is a prefix match, not a copy of the fixture: names that were
+        # not active when the fixture was measured must go as well.
+        for name in ("node_zfs_future_counter", "node_zfs_arc_size_bytes", "node_zfs_zpool_dataset_nread"):
+            with self.subTest(name=name):
+                self.assertIsNone(apply(self.rules, series(name)))
+
+    def test_kept_zfs_series_keep_their_exact_label_set_on_every_node(self):
+        for node in NODES:
+            samples = [
+                series(name, instance=node) for name in sorted(KEPT_ZFS - {"node_zfs_zpool_state"})
+            ]
+            samples += [
+                series("node_zfs_zpool_state", instance=node, state=state, zpool=pool)
+                for pool in ("rpool", "tank")
+                for state in ("degraded", "faulted", "offline", "online", "removed", "suspended", "unavail")
+            ]
+            for labels in samples:
+                with self.subTest(labels=labels):
+                    self.assertEqual(apply(self.rules, labels), labels)
+
+    def test_zfs_rules_select_on_name_and_mark_only(self):
+        zfs_rules = [r for r in self.rules if "zfs" in r.get("regex", "")]
+        self.assertEqual(len(zfs_rules), 3)
+        for rule in zfs_rules:
+            self.assertLessEqual(set(rule.get("source_labels", [])), {"__name__", "__tmp_zfs_keep"})
+
+    def test_zfs_comment_records_count_date_and_why_three_rules(self):
+        body = component_body(self.config, 'prometheus.relabel "friendly_names"')
+        for text in ("OFF-1446", "3,231", "2026-11-08", "RE2", "negative", "lookahead"):
+            with self.subTest(text=text):
+                self.assertIn(text, body)
 
     def test_no_series_leaves_with_a_temporary_label(self):
         samples = [series(name) for name in self.zfs_names] + [
