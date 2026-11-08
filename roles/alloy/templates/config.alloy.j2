@@ -47,6 +47,32 @@ prometheus.relabel "friendly_names" {
     action        = "drop"
   }
 
+  // Unused ZFS series (OFF-1446): 3,231 series across pve01-pve07 (315 of the 321
+  // node_zfs_* names), measured 2026-11-08. Keep the six names "Blackstar Node
+  // Health" consumes or that report pool health: node_zfs_arc_{size,c_max,c_min,
+  // hits,misses} and node_zfs_zpool_state (84 series).
+  // Three rules, not one: the relabel regex is RE2, which has no negative
+  // lookahead, so "every node_zfs_* name except these six" cannot be one drop
+  // regex. Instead, mark the six with a temporary label, drop every unmarked
+  // node_zfs_* series (the "@" separator joins __name__ and the mark, which is
+  // empty when absent), then remove the mark so kept series leave unchanged.
+  rule {
+    source_labels = ["__name__"]
+    regex         = "node_zfs_(arc_(size|c_max|c_min|hits|misses)|zpool_state)"
+    target_label  = "__tmp_zfs_keep"
+    replacement   = "1"
+  }
+  rule {
+    source_labels = ["__name__", "__tmp_zfs_keep"]
+    separator     = "@"
+    regex         = "node_zfs_.*@"
+    action        = "drop"
+  }
+  rule {
+    regex  = "__tmp_zfs_keep"
+    action = "labeldrop"
+  }
+
   rule {
     source_labels = ["chip"]
     regex         = "target.*"
